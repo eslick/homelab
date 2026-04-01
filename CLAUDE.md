@@ -13,11 +13,29 @@
 Never run `sudo apt install`, `sudo systemctl enable`, or any direct mutation.
 The correct workflow is:
 1. Write or update the playbook in `playbooks/`
-2. Run `ansible-playbook playbooks/<name>.yml --check --diff` first
-3. If clean, apply: `ansible-playbook playbooks/<name>.yml`
-4. Verify the change worked as expected
-5. Commit: `git add -A && git commit -m "<type>(<scope>): <desc>" && git push`
-6. Write runbook to `runbooks/YYYY-MM-DD-<task>.md`
+2. **Auto-apply**: after editing a playbook, immediately run it through the apply cycle below
+3. Verify the change worked as expected
+4. Commit: `git add -A && git commit -m "<type>(<scope>): <desc>" && git push`
+5. Write runbook to `runbooks/YYYY-MM-DD-<task>.md`
+
+## Playbook Auto-Apply
+After writing or editing a playbook, automatically apply it using this sequence:
+
+1. **Dry run first — always**: `ansible-playbook playbooks/<name>.yml --check --diff [--tags <tag>]`
+2. Review the dry-run output for unexpected changes. Stop and ask the user if anything looks wrong.
+3. **Apply**: `ansible-playbook playbooks/<name>.yml [--tags <tag>]`
+4. **Verify**: run an appropriate check (e.g., `systemctl status`, `docker ps`, `which <cmd>`)
+
+### Incremental runs with tags
+When you know which tasks were changed, use `--tags` to run only the affected subset:
+- Pass `--tags <tag>` matching the tags on the changed tasks
+- Example: edited only the backup cron task → `--tags cron,backup`
+- When adding a new task or unsure of impact, run the full playbook without `--tags`
+
+### When NOT to auto-apply
+- Health check mode (`claude -p` cron) — never run playbooks
+- If the dry run shows unexpected changes — stop and confirm with the user
+- If the playbook touches destructive operations (removing packages, dropping volumes) — confirm first
 
 ## Playbook Conventions
 - All tasks must be idempotent (safe to re-run multiple times)
@@ -57,7 +75,7 @@ After any task that changes system state, write a runbook:
 - Commit runbook in the same git commit as the playbook change
 
 ## Safety Rules
-- Always run `--check --diff` before playbooks touching /etc or systemd units
+- The dry run in Playbook Auto-Apply satisfies the `--check --diff` requirement
 - Explicitly list all `become: yes` tasks before running any playbook that uses sudo
 - Never chain multiple destructive changes; verify between each
 - For Docker volume data: confirm restic snapshot exists before modifying containers
