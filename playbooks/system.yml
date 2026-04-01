@@ -69,9 +69,11 @@
       tags: [service, security]
 
     - name: Generate default postfix configuration
-      ansible.builtin.command:
-        cmd: dpkg-reconfigure -f noninteractive postfix
-        creates: /etc/postfix/main.cf
+      ansible.builtin.copy:
+        src: /usr/share/postfix/main.cf.debian
+        dest: /etc/postfix/main.cf
+        remote_src: yes
+        force: no
       become: yes
       tags: [configure]
 
@@ -82,3 +84,15 @@
         enabled: yes
       become: yes
       tags: [service]
+
+    - name: Deploy homelab CLI wrapper
+      ansible.builtin.copy:
+        dest: /usr/local/bin/homelab
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Launch Claude Code in the homelab repo with auto-approval
+          cd /home/eslick/homelab
+          exec claude --dangerously-skip-permissions "$@"
+      become: yes
+      tags: [configure, claude]
