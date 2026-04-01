@@ -36,56 +36,20 @@
 
     - name: Deploy health data collection script
       ansible.builtin.copy:
+        src: ../files/homelab-health-data.sh
         dest: "{{ health_data_script }}"
         mode: '0755'
-        content: |
-          #!/bin/bash
-          # Collect all health check data in one pass.
-          # Outputs structured markdown consumed by homelab-health-check.sh.
-          # No network calls, no Claude — just local system queries.
-
-          echo "## Disk Usage"
-          echo '```'
-          df -h --output=target,pcent,size,used,avail -x tmpfs -x devtmpfs | tail -n +2
-          echo '```'
-          echo ""
-
-          echo "## Memory Usage"
-          echo '```'
-          free -h
-          echo '```'
-          MEM_USED_PCT=$(awk '/^Mem:/ {printf "%.0f", $3/$2*100}' /proc/meminfo 2>/dev/null || \
-            free | awk '/^Mem:/ {printf "%.0f", $3/$2*100}')
-          echo "Used: ${MEM_USED_PCT}%"
-          echo '```'
-          echo ""
-
-          echo "## Docker Containers"
-          echo '```'
-          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null || echo "docker not available"
-          echo '```'
-          echo ""
-
-          echo "## Restic Last Snapshot"
-          echo '```'
-          RESTIC_PASSWORD_FILE=/etc/restic/password \
-          RESTIC_REPOSITORY=/mnt/nas/backups/homelab \
-            restic snapshots --last 2>/dev/null || echo "restic query failed"
-          echo '```'
-          echo ""
-
-          echo "## Failed Systemd Units"
-          echo '```'
-          systemctl --failed --no-pager 2>/dev/null
-          echo '```'
-          echo ""
-
-          echo "## Pending Security Updates"
-          echo '```'
-          apt list --upgradable 2>/dev/null | grep -i security || echo "none"
-          echo '```'
       become: yes
       tags: [claude, configure]
+
+    - name: Allow eslick to run restic without password (for health checks)
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/eslick-restic
+        content: "eslick ALL=(root) NOPASSWD: /usr/bin/restic\n"
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      become: yes
+      tags: [claude, configure, security]
 
     - name: Ensure health-reports directory exists
       ansible.builtin.file:
