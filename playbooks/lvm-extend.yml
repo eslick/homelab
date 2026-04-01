@@ -1,0 +1,14 @@
+---
+- name: Extend root LV to use full disk
+  hosts: homelab
+  gather_facts: no
+
+  tasks:
+    - name: Extend ubuntu-lv to use all free space
+      community.general.lvol:
+        vg: ubuntu-vg
+        lv: ubuntu-lv
+        size: +100%FREE
+        resizefs: yes
+      become: yes
+      tags: [configure]

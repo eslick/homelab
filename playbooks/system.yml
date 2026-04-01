@@ -16,10 +16,22 @@
           - ufw
           - restic
           - jq
+          - kitty-terminfo
         state: present
         update_cache: yes
       become: yes
       tags: [install]
+
+    - name: Configure passwordless sudo for eslick
+      ansible.builtin.copy:
+        src: ../files/sudoers-eslick
+        dest: /etc/sudoers.d/eslick
+        mode: '0440'
+        owner: root
+        group: root
+        validate: 'visudo -cf %s'
+      become: yes
+      tags: [configure, security]
 
     - name: Set timezone to US/Pacific
       community.general.timezone:
@@ -54,3 +66,18 @@
         enabled: yes
       become: yes
       tags: [service, security]
+
+    - name: Generate default postfix configuration
+      ansible.builtin.command:
+        cmd: dpkg-reconfigure -f noninteractive postfix
+        creates: /etc/postfix/main.cf
+      become: yes
+      tags: [configure]
+
+    - name: Ensure postfix is running
+      ansible.builtin.service:
+        name: postfix
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service]

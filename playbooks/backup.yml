@@ -19,9 +19,9 @@
       ansible.builtin.file:
         path: /etc/restic
         state: directory
-        mode: '0700'
+        mode: '0750'
         owner: root
-        group: root
+        group: eslick
       become: yes
       tags: [backup]
 
