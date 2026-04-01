@@ -6,7 +6,6 @@
   vars:
     backup_script: /usr/local/bin/homelab-backup.sh
     restic_nas_repo: /mnt/nas/backups/homelab
-    restic_s3_repo: "s3:s3.amazonaws.com/YOUR-BUCKET/homelab"
     restic_password_file: /etc/restic/password
     backup_paths:
       - /home
@@ -33,16 +32,12 @@
           #!/bin/bash
           set -euo pipefail
           export RESTIC_PASSWORD_FILE="{{ restic_password_file }}"
-          export AWS_ACCESS_KEY_ID="$(cat /etc/restic/aws_key_id)"
-          export AWS_SECRET_ACCESS_KEY="$(cat /etc/restic/aws_secret)"
           LOG=/var/log/restic-backup.log
           exec &>> "$LOG"
           echo "=== Backup started $(date) ==="
           restic -r {{ restic_nas_repo }} backup {{ backup_paths | join(' ') }} \
             --exclude="*.tmp" --exclude="*.log" \
             --tag "$(hostname)" --tag "automated"
-          restic -r {{ restic_nas_repo }} copy \
-            --to {{ restic_s3_repo }}
           restic -r {{ restic_nas_repo }} forget \
             --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
           echo "=== Backup complete $(date) ==="
