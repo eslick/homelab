@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(df:*)",
+      "Bash(du:*)",
+      "Bash(ps:*)",
+      "Bash(free:*)",
+      "Bash(uptime:*)",
+      "Bash(uname:*)",
+      "Bash(ip:*)",
+      "Bash(ss:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker stats:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker images:*)",
+      "Bash(git:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(ansible-lint:*)",
+      "Bash(systemctl status:*)",
+      "Bash(systemctl list-units:*)",
+      "Bash(journalctl:*)",
+      "Bash(restic snapshots:*)",
+      "Bash(restic stats:*)",
+      "Write(*)"
+    ],
+    "deny": [
+      "Bash(sudo rm -rf:*)",
+      "Bash(sudo dd:*)",
+      "Bash(sudo mkfs:*)",
+      "Bash(sudo fdisk:*)",
+      "Bash(sudo parted:*)",
+      "Bash(sudo wipefs:*)"
+    ]
+  }
+}

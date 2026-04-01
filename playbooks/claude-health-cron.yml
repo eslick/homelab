@@ -1,0 +1,70 @@
+---
+# Sets up the claude -p health check cron job.
+# Runs 3x daily and commits health reports to git.
+
+- name: Configure Claude health check cron
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    health_script: /usr/local/bin/homelab-health-check.sh
+    api_key_file: /etc/claude/api_key
+    homelab_dir: "{{ ansible_env.HOME }}/homelab"
+
+  tasks:
+    - name: Ensure /etc/claude directory
+      ansible.builtin.file:
+        path: /etc/claude
+        state: directory
+        mode: '0700'
+        owner: root
+        group: root
+      become: yes
+      tags: [claude, configure]
+
+    - name: Ensure health-reports directory exists
+      ansible.builtin.file:
+        path: "{{ homelab_dir }}/health-reports"
+        state: directory
+        mode: '0755'
+      tags: [claude]
+
+    - name: Deploy health check script
+      ansible.builtin.copy:
+        dest: "{{ health_script }}"
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Claude-driven health check (headless -p mode)
+          # Read-only: checks system state, writes report, commits to git
+          # Does NOT run playbooks or make changes
+
+          cd {{ homelab_dir }}
+          export ANTHROPIC_API_KEY="$(cat {{ api_key_file }} 2>/dev/null)"
+
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ERROR: No API key found at {{ api_key_file }}" >&2
+            exit 1
+          fi
+
+          claude -p \
+            --allowedTools "Bash,Write" \
+            --max-turns 15 \
+            "You are running in HEALTH CHECK MODE. Follow the ## Health Check Mode section in CLAUDE.md exactly. Check all six health indicators, write the markdown report to health-reports/, prefix with ALERT- if any threshold is exceeded, then commit and push. Do not make any system changes."
+
+          echo "Health check run completed at $(date)"
+      become: yes
+      tags: [claude]
+
+    - name: Schedule health checks (8am, 2pm, 8pm)
+      ansible.builtin.cron:
+        name: "claude-health-check-{{ item.name }}"
+        minute: "0"
+        hour: "{{ item.hour }}"
+        job: "{{ health_script }} >> /var/log/claude-health.log 2>&1"
+        user: "{{ ansible_env.USER }}"
+      loop:
+        - { name: morning, hour: "8" }
+        - { name: afternoon, hour: "14" }
+        - { name: evening, hour: "20" }
+      tags: [claude, cron]

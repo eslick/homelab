@@ -1,0 +1,36 @@
+---
+# Manages all Docker Compose services.
+# Add new containers by:
+#   1. Adding an entry to the `services` var
+#   2. Creating a template in templates/<service>-compose.yml.j2
+#   3. Running: ansible-playbook playbooks/docker.yml --check --diff
+#   4. Applying: ansible-playbook playbooks/docker.yml
+
+- name: Manage Docker Compose services
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    services:
+      - name: openclaw
+        port: 18789
+      # - name: your-next-service
+      #   port: 8080
+
+  tasks:
+    - name: Ensure compose directories exist
+      ansible.builtin.file:
+        path: "{{ compose_base }}/{{ item.name }}"
+        state: directory
+        mode: '0755'
+      loop: "{{ services }}"
+      become: yes
+      tags: [docker]
+
+    - name: Allow service ports through UFW
+      ansible.builtin.command: "ufw allow {{ item.port }}/tcp"
+      loop: "{{ services }}"
+      become: yes
+      changed_when: true
+      tags: [docker, security]

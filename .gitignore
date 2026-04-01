@@ -1,0 +1,6 @@
+*.retry
+.env
+secrets/
+*.vault
+__pycache__/
+health-reports/   # optional: comment out if you want reports in git

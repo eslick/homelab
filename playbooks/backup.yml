@@ -1,0 +1,60 @@
+---
+- name: Configure Restic backup schedule
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    backup_script: /usr/local/bin/homelab-backup.sh
+    restic_nas_repo: /mnt/nas/backups/homelab
+    restic_s3_repo: "s3:s3.amazonaws.com/YOUR-BUCKET/homelab"
+    restic_password_file: /etc/restic/password
+    backup_paths:
+      - /home
+      - /etc
+      - /opt/compose
+      - /var/lib/docker/volumes
+
+  tasks:
+    - name: Ensure /etc/restic directory
+      ansible.builtin.file:
+        path: /etc/restic
+        state: directory
+        mode: '0700'
+        owner: root
+        group: root
+      become: yes
+      tags: [backup]
+
+    - name: Deploy backup script
+      ansible.builtin.copy:
+        dest: "{{ backup_script }}"
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+          export RESTIC_PASSWORD_FILE="{{ restic_password_file }}"
+          export AWS_ACCESS_KEY_ID="$(cat /etc/restic/aws_key_id)"
+          export AWS_SECRET_ACCESS_KEY="$(cat /etc/restic/aws_secret)"
+          LOG=/var/log/restic-backup.log
+          exec &>> "$LOG"
+          echo "=== Backup started $(date) ==="
+          restic -r {{ restic_nas_repo }} backup {{ backup_paths | join(' ') }} \
+            --exclude="*.tmp" --exclude="*.log" \
+            --tag "$(hostname)" --tag "automated"
+          restic -r {{ restic_nas_repo }} copy \
+            --to {{ restic_s3_repo }}
+          restic -r {{ restic_nas_repo }} forget \
+            --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+          echo "=== Backup complete $(date) ==="
+      become: yes
+      tags: [backup]
+
+    - name: Schedule backup at 3am daily
+      ansible.builtin.cron:
+        name: homelab-restic-backup
+        minute: "0"
+        hour: "3"
+        job: "{{ backup_script }}"
+        user: root
+      become: yes
+      tags: [backup, cron]
