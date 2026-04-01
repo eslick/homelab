@@ -8,8 +8,10 @@
 
   vars:
     health_script: /usr/local/bin/homelab-health-check.sh
+    health_data_script: /usr/local/bin/homelab-health-data.sh
     api_key_file: /etc/claude/api_key
     homelab_dir: /home/eslick/homelab
+    alert_email: ian@vitalreactor.com
 
   tasks:
     - name: Ensure /etc/claude directory
@@ -29,6 +31,59 @@
         mode: '0640'
         owner: root
         group: eslick
+      become: yes
+      tags: [claude, configure]
+
+    - name: Deploy health data collection script
+      ansible.builtin.copy:
+        dest: "{{ health_data_script }}"
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Collect all health check data in one pass.
+          # Outputs structured markdown consumed by homelab-health-check.sh.
+          # No network calls, no Claude — just local system queries.
+
+          echo "## Disk Usage"
+          echo '```'
+          df -h --output=target,pcent,size,used,avail -x tmpfs -x devtmpfs | tail -n +2
+          echo '```'
+          echo ""
+
+          echo "## Memory Usage"
+          echo '```'
+          free -h
+          echo '```'
+          MEM_USED_PCT=$(awk '/^Mem:/ {printf "%.0f", $3/$2*100}' /proc/meminfo 2>/dev/null || \
+            free | awk '/^Mem:/ {printf "%.0f", $3/$2*100}')
+          echo "Used: ${MEM_USED_PCT}%"
+          echo '```'
+          echo ""
+
+          echo "## Docker Containers"
+          echo '```'
+          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null || echo "docker not available"
+          echo '```'
+          echo ""
+
+          echo "## Restic Last Snapshot"
+          echo '```'
+          RESTIC_PASSWORD_FILE=/etc/restic/password \
+          RESTIC_REPOSITORY=/mnt/nas/backups/homelab \
+            restic snapshots --last 2>/dev/null || echo "restic query failed"
+          echo '```'
+          echo ""
+
+          echo "## Failed Systemd Units"
+          echo '```'
+          systemctl --failed --no-pager 2>/dev/null
+          echo '```'
+          echo ""
+
+          echo "## Pending Security Updates"
+          echo '```'
+          apt list --upgradable 2>/dev/null | grep -i security || echo "none"
+          echo '```'
       become: yes
       tags: [claude, configure]
 
@@ -53,15 +108,32 @@
           export ANTHROPIC_API_KEY="$(cat {{ api_key_file }} 2>/dev/null)"
 
           if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ERROR: No API key found at {{ api_key_file }}" >&2
+            echo "ERROR: No API key found at {{ api_key_file }}" | \
+              mail -s "[HOMELAB ERROR] Health check: missing API key" {{ alert_email }}
             exit 1
           fi
+
+          touch /tmp/.health-check-start
+
+          # Collect all system data upfront so Claude only needs to interpret
+          HEALTH_DATA="$({{ health_data_script }} 2>&1)"
 
           claude -p \
             --model claude-sonnet-4-6 \
             --allowedTools "Bash,Write" \
-            --max-turns 15 \
-            "You are running in HEALTH CHECK MODE. Follow the ## Health Check Mode section in CLAUDE.md exactly. Check all six health indicators, write the markdown report to health-reports/, prefix with ALERT- if any threshold is exceeded, then commit and push. Do not make any system changes."
+            --max-turns 5 \
+            "You are running in HEALTH CHECK MODE. All system data has already been collected — do NOT run any system commands to gather more data.
+
+          Follow the ## Health Check Mode section in CLAUDE.md exactly. Use only the data below to evaluate all six health indicators. Write the markdown report to health-reports/ (prefix with ALERT- if any threshold is exceeded), then run: git add health-reports/ && git commit -m 'health: \$(date +%Y-%m-%d-%H)' && git push
+
+          === SYSTEM DATA ===
+          ${HEALTH_DATA}"
+
+          # Email alert if any ALERT- report was created in this run
+          ALERT_FILE=$(find {{ homelab_dir }}/health-reports -name "ALERT-$(date +%Y-%m-%d-%H)*" -newer /tmp/.health-check-start 2>/dev/null | head -1)
+          if [ -n "$ALERT_FILE" ]; then
+            mail -s "[HOMELAB ALERT] $(basename "$ALERT_FILE")" {{ alert_email }} < "$ALERT_FILE"
+          fi
 
           echo "Health check run completed at $(date)"
       become: yes
