@@ -48,6 +48,7 @@
           fi
 
           claude -p \
+            --model claude-sonnet-4-6 \
             --allowedTools "Bash,Write" \
             --max-turns 15 \
             "You are running in HEALTH CHECK MODE. Follow the ## Health Check Mode section in CLAUDE.md exactly. Check all six health indicators, write the markdown report to health-reports/, prefix with ALERT- if any threshold is exceeded, then commit and push. Do not make any system changes."
