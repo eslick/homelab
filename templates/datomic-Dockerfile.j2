@@ -1,0 +1,18 @@
+FROM eclipse-temurin:17-jre-jammy
+
+ARG DATOMIC_VERSION={{ datomic_version }}
+
+RUN apt-get update && apt-get install -y curl unzip && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sSL -o /tmp/datomic.zip \
+      "https://datomic-pro-downloads.s3.amazonaws.com/${DATOMIC_VERSION}/datomic-pro-${DATOMIC_VERSION}.zip" && \
+    unzip /tmp/datomic.zip -d /opt && \
+    mv /opt/datomic-pro-${DATOMIC_VERSION} /opt/datomic && \
+    rm /tmp/datomic.zip
+
+WORKDIR /opt/datomic
+
+EXPOSE 4334
+
+ENTRYPOINT ["bin/transactor"]
+CMD ["/config/transactor.properties"]

@@ -1,0 +1,21 @@
+services:
+  transactor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datomic-transactor
+    volumes:
+      - {{ compose_base }}/datomic/transactor.properties:/config/transactor.properties:ro
+      - datomic-data:/opt/datomic/data
+    ports:
+      - "{{ datomic_port }}:4334"
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+
+volumes:
+  datomic-data:
+
+networks:
+  {{ docker_network }}:
+    external: true

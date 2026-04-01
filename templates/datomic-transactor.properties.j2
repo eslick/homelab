@@ -1,0 +1,15 @@
+protocol=sql
+host=0.0.0.0
+port=4334
+alt-host={{ ansible_hostname | default('localhost') }}
+
+# CockroachDB (PostgreSQL-compatible) storage
+sql-url=jdbc:postgresql://cockroachdb:26257/datomic?sslmode=disable
+sql-driver-class=org.postgresql.Driver
+sql-user=root
+sql-password=
+
+# Memory settings (tune for your server)
+memory-index-threshold=32m
+memory-index-max=256m
+object-cache-max=128m

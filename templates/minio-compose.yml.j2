@@ -1,0 +1,23 @@
+services:
+  minio:
+    image: minio/minio:{{ minio_version | default('latest') }}
+    container_name: minio
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    ports:
+      - "{{ minio_api_port }}:9000"
+      - "{{ minio_console_port }}:9001"
+    environment:
+      MINIO_ROOT_USER: "{{ minio_root_user }}"
+      MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+
+networks:
+  {{ docker_network }}:
+    external: true

@@ -1,0 +1,20 @@
+services:
+  cockroachdb:
+    image: cockroachdb/cockroach:{{ cockroachdb_version | default('latest') }}
+    container_name: cockroachdb
+    command: start-single-node --insecure
+    volumes:
+      - cockroach-data:/cockroach/cockroach-data
+    ports:
+      - "{{ cockroachdb_sql_port }}:26257"
+      - "{{ cockroachdb_ui_port }}:8080"
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+
+volumes:
+  cockroach-data:
+
+networks:
+  {{ docker_network }}:
+    external: true

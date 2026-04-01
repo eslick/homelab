@@ -17,6 +17,7 @@
           - restic
           - jq
           - kitty-terminfo
+          - docker-compose-v2
         state: present
         update_cache: yes
       become: yes

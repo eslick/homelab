@@ -12,13 +12,42 @@
 
   vars:
     compose_base: /opt/compose
+    docker_network: homelab-net
+
     services:
       - name: openclaw
-        port: 18789
-      # - name: your-next-service
-      #   port: 8080
+        ports: [18789]
+        managed: false
+      - name: cockroachdb
+        ports: [26257, 8090]
+      - name: minio
+        ports: [9000, 9001]
+      - name: datomic
+        ports: [4334]
+
+    # CockroachDB
+    cockroachdb_sql_port: 26257
+    cockroachdb_ui_port: 8090
+
+    # MinIO
+    minio_api_port: 9000
+    minio_console_port: 9001
+    minio_root_user: minioadmin
+    minio_root_password: "{{ lookup('env', 'MINIO_ROOT_PASSWORD') | default('changeme', true) }}"
+
+    # Datomic Transactor
+    datomic_port: 4334
+    datomic_version: "1.0.7556"
 
   tasks:
+    # --- Shared infrastructure ---
+
+    - name: Create shared Docker network
+      community.docker.docker_network:
+        name: "{{ docker_network }}"
+      become: yes
+      tags: [docker]
+
     - name: Ensure compose directories exist
       ansible.builtin.file:
         path: "{{ compose_base }}/{{ item.name }}"
@@ -28,9 +57,99 @@
       become: yes
       tags: [docker]
 
+    - name: Deploy compose files from templates
+      ansible.builtin.template:
+        src: "../templates/{{ item.name }}-compose.yml.j2"
+        dest: "{{ compose_base }}/{{ item.name }}/docker-compose.yml"
+        mode: '0644'
+      loop: "{{ services | selectattr('managed', 'undefined') | list + services | selectattr('managed', 'defined') | selectattr('managed') | list }}"
+      become: yes
+      tags: [docker, configure]
+
     - name: Allow service ports through UFW
-      ansible.builtin.command: "ufw allow {{ item.port }}/tcp"
-      loop: "{{ services }}"
+      ansible.builtin.command: "ufw allow {{ item.1 }}/tcp"
+      loop: "{{ services | subelements('ports') }}"
       become: yes
       changed_when: true
       tags: [docker, security]
+
+    # --- CockroachDB (must start first, Datomic depends on it) ---
+
+    - name: Start CockroachDB
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/cockroachdb"
+        state: present
+      become: yes
+      tags: [docker, service]
+
+    - name: Wait for CockroachDB to accept connections
+      ansible.builtin.command: >
+        docker exec cockroachdb
+        cockroach sql --insecure -e "SELECT 1"
+      register: crdb_ready
+      until: crdb_ready.rc == 0
+      retries: 10
+      delay: 3
+      changed_when: false
+      become: yes
+      tags: [docker]
+
+    - name: Create Datomic database in CockroachDB
+      ansible.builtin.command: >
+        docker exec cockroachdb
+        cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS datomic"
+      register: crdb_create_db
+      changed_when: "'CREATE DATABASE' in crdb_create_db.stdout"
+      become: yes
+      tags: [docker]
+
+    - name: Create datomic_kvs table in CockroachDB
+      ansible.builtin.shell: >
+        docker exec cockroachdb cockroach sql --insecure -d datomic -e "
+        CREATE TABLE IF NOT EXISTS datomic_kvs (
+          id TEXT NOT NULL,
+          rev INTEGER,
+          map TEXT,
+          val BYTES,
+          CONSTRAINT pk_id PRIMARY KEY (id)
+        );
+        GRANT ALL ON TABLE datomic_kvs TO public;"
+      register: crdb_table
+      changed_when: "'CREATE TABLE' in crdb_table.stdout"
+      become: yes
+      tags: [docker]
+
+    # --- MinIO ---
+
+    - name: Start MinIO
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/minio"
+        state: present
+      become: yes
+      tags: [docker, service]
+
+    # --- Datomic Transactor ---
+
+    - name: Deploy Datomic Dockerfile
+      ansible.builtin.template:
+        src: "../templates/datomic-Dockerfile.j2"
+        dest: "{{ compose_base }}/datomic/Dockerfile"
+        mode: '0644'
+      become: yes
+      tags: [docker, configure]
+
+    - name: Deploy Datomic transactor properties
+      ansible.builtin.template:
+        src: "../templates/datomic-transactor.properties.j2"
+        dest: "{{ compose_base }}/datomic/transactor.properties"
+        mode: '0640'
+      become: yes
+      tags: [docker, configure]
+
+    - name: Build and start Datomic transactor
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/datomic"
+        state: present
+        build: always
+      become: yes
+      tags: [docker, service]
