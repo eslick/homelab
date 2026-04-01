@@ -277,8 +277,9 @@ cat > playbooks/system.yml << 'YAML'
         content: |
           #!/bin/bash
           # Launch Claude Code in the homelab repo with auto-approval
+          # Default: sonnet for cost efficiency. Use --model claude-opus-4-6 when needed.
           cd ~/homelab
-          exec claude --dangerously-skip-permissions "\$@"
+          exec claude --dangerously-skip-permissions --model claude-sonnet-4-6 "\$@"
       become: yes
       tags: [configure, claude]
 YAML
