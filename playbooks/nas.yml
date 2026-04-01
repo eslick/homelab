@@ -1,0 +1,60 @@
+---
+- name: Mount NAS for backups
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    nas_ip: 192.168.50.101
+    nas_share: ServerBackup
+    nas_user: eslick
+    nas_mount_point: /mnt/nas
+    nas_credentials_file: /etc/nas-credentials
+
+  tasks:
+    - name: Install cifs-utils
+      ansible.builtin.apt:
+        name: cifs-utils
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install]
+
+    - name: Create NAS mount point
+      ansible.builtin.file:
+        path: "{{ nas_mount_point }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      become: yes
+      tags: [configure]
+
+    - name: Deploy NAS credentials file
+      ansible.builtin.template:
+        src: ../templates/nas-credentials.j2
+        dest: "{{ nas_credentials_file }}"
+        mode: '0600'
+        owner: root
+        group: root
+      become: yes
+      tags: [configure]
+
+    - name: Add NAS mount to fstab
+      ansible.posix.mount:
+        src: "//{{ nas_ip }}/{{ nas_share }}"
+        path: "{{ nas_mount_point }}"
+        fstype: cifs
+        opts: "credentials={{ nas_credentials_file }},uid=root,gid=root,iocharset=utf8,vers=3.0,_netdev,nofail"
+        state: mounted
+      become: yes
+      tags: [configure]
+
+    - name: Ensure backups subdirectory exists
+      ansible.builtin.file:
+        path: "{{ nas_mount_point }}/backups/homelab"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      become: yes
+      tags: [configure]

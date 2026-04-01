@@ -9,7 +9,7 @@
   vars:
     health_script: /usr/local/bin/homelab-health-check.sh
     api_key_file: /etc/claude/api_key
-    homelab_dir: "{{ ansible_env.HOME }}/homelab"
+    homelab_dir: /home/eslick/homelab
 
   tasks:
     - name: Ensure /etc/claude directory
@@ -62,7 +62,7 @@
         minute: "0"
         hour: "{{ item.hour }}"
         job: "{{ health_script }} >> /var/log/claude-health.log 2>&1"
-        user: "{{ ansible_env.USER }}"
+        user: eslick
       loop:
         - { name: morning, hour: "8" }
         - { name: afternoon, hour: "14" }
