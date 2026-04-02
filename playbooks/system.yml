@@ -18,6 +18,7 @@
           - jq
           - kitty-terminfo
           - docker-compose-v2
+          - pandoc
         state: present
         update_cache: yes
       become: yes
@@ -85,6 +86,30 @@
       become: yes
       tags: [service]
 
+    - name: Remove old npm global Claude installation
+      ansible.builtin.command:
+        cmd: npm -g uninstall @anthropic-ai/claude-code
+        removes: /usr/local/bin/claude
+      become: yes
+      tags: [install, claude]
+
+    - name: Install Claude Code (native installer, user-space)
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://claude.ai/install.sh | sh
+        creates: /home/eslick/.local/bin/claude
+      become: yes
+      become_user: eslick
+      tags: [install, claude]
+
+    - name: Update Claude Code to latest version
+      ansible.builtin.command:
+        cmd: /home/eslick/.local/bin/claude update
+      become: yes
+      become_user: eslick
+      register: claude_update_result
+      changed_when: "'updated to' in claude_update_result.stdout"
+      tags: [configure, claude]
+
     - name: Deploy homelab CLI wrapper
       ansible.builtin.copy:
         dest: /usr/local/bin/homelab
@@ -94,6 +119,6 @@
           # Launch Claude Code in the homelab repo with auto-approval
           # Default: sonnet for cost efficiency. Use --model claude-opus-4-6 when needed.
           cd /home/eslick/homelab
-          exec claude --dangerously-skip-permissions --model claude-sonnet-4-6 "$@"
+          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-4-6 "$@"
       become: yes
       tags: [configure, claude]

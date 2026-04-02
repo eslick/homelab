@@ -82,7 +82,7 @@
           # Collect all system data upfront so Claude only needs to interpret
           HEALTH_DATA="$({{ health_data_script }} 2>&1)"
 
-          claude -p \
+          /home/eslick/.local/bin/claude -p \
             --model claude-sonnet-4-6 \
             --allowedTools "Bash,Write" \
             --max-turns 5 \
@@ -96,7 +96,10 @@
           # Email alert if any ALERT- report was created in this run
           ALERT_FILE=$(find {{ homelab_dir }}/health-reports -name "ALERT-$(date +%Y-%m-%d-%H)*" -newer /tmp/.health-check-start 2>/dev/null | head -1)
           if [ -n "$ALERT_FILE" ]; then
-            mail -s "[HOMELAB ALERT] $(basename "$ALERT_FILE")" {{ alert_email }} < "$ALERT_FILE"
+            pandoc "$ALERT_FILE" -f markdown -t html --standalone \
+              --metadata title="Homelab Alert" | \
+              mail -a "Content-Type: text/html" \
+                -s "[HOMELAB ALERT] $(basename "$ALERT_FILE")" {{ alert_email }}
           fi
 
           echo "Health check run completed at $(date)"
