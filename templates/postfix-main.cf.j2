@@ -1,0 +1,26 @@
+# Managed by Ansible — do not edit directly
+# See playbooks/postfix.yml
+
+smtpd_banner = $myhostname ESMTP $mail_name (Ubuntu)
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+compatibility_level = 3.6
+
+# Relay through Gmail SMTP
+relayhost = [smtp.gmail.com]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = encrypt
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+
+# Send as ian@vitalreactor.com
+myhostname = {{ ansible_hostname }}
+mydomain = vitalreactor.com
+myorigin = $mydomain
+sender_canonical_maps = static:ian@vitalreactor.com
+
+# Local delivery only for root/system aliases
+mydestination = $myhostname, localhost.$mydomain, localhost
+inet_interfaces = loopback-only

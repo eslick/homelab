@@ -37,6 +37,7 @@
           echo "=== Backup started $(date) ==="
           restic -r {{ restic_nas_repo }} backup {{ backup_paths | join(' ') }} \
             --exclude="*.tmp" --exclude="*.log" \
+            --exclude="/usr/share/ollama/.ollama/models" \
             --tag "$(hostname)" --tag "automated"
           restic -r {{ restic_nas_repo }} forget \
             --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune

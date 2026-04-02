@@ -1,0 +1,83 @@
+---
+# Configures postfix as a Gmail relay for outbound alerts.
+# Sends as ian@vitalreactor.com via smtp.gmail.com:587.
+
+- name: Configure postfix Gmail relay
+  hosts: homelab
+  gather_facts: yes
+
+  vars:
+    smtp_user: ian@vitalreactor.com
+    sasl_passwd_value_file: /etc/postfix/sasl_passwd_value
+
+  tasks:
+    - name: Ensure postfix and libsasl2 are installed
+      ansible.builtin.apt:
+        name:
+          - postfix
+          - libsasl2-modules
+        state: present
+      become: yes
+      tags: [install, postfix]
+
+    - name: Deploy postfix main.cf
+      ansible.builtin.template:
+        src: ../templates/postfix-main.cf.j2
+        dest: /etc/postfix/main.cf
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      notify: restart postfix
+      tags: [configure, postfix]
+
+    - name: Build sasl_passwd from stored app password
+      ansible.builtin.shell: |
+        echo "[smtp.gmail.com]:587 {{ smtp_user }}:$(cat {{ sasl_passwd_value_file }})" > /etc/postfix/sasl_passwd
+        chmod 600 /etc/postfix/sasl_passwd
+        postmap /etc/postfix/sasl_passwd
+      become: yes
+      changed_when: true
+      notify: restart postfix
+      tags: [configure, postfix]
+
+    - name: Ensure sasl_passwd.db has correct permissions
+      ansible.builtin.file:
+        path: /etc/postfix/sasl_passwd.db
+        owner: root
+        group: root
+        mode: '0600'
+      become: yes
+      tags: [configure, postfix]
+
+    - name: Ensure local mail aliases redirect to ian@vitalreactor.com
+      ansible.builtin.lineinfile:
+        path: /etc/aliases
+        regexp: "^{{ item }}:"
+        line: "{{ item }}: ian@vitalreactor.com"
+        state: present
+      become: yes
+      loop:
+        - root
+        - eslick
+      notify: rebuild aliases
+      tags: [configure, postfix]
+
+    - name: Ensure postfix is running and enabled
+      ansible.builtin.service:
+        name: postfix
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, postfix]
+
+  handlers:
+    - name: restart postfix
+      ansible.builtin.service:
+        name: postfix
+        state: restarted
+      become: yes
+
+    - name: rebuild aliases
+      ansible.builtin.command: newaliases
+      become: yes
