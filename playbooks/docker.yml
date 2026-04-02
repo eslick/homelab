@@ -183,3 +183,19 @@
       register: openclaw_bind_result
       changed_when: "'Updated' in openclaw_bind_result.stdout"
       tags: [docker, configure]
+
+    - name: Allow OpenClaw control UI from Tailscale origin
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - config
+          - set
+          - gateway.controlUi.allowedOrigins
+          - '["http://speedracer.terrier-haddock.ts.net:18789"]'
+      become: yes
+      register: openclaw_origins_result
+      changed_when: "'Updated' in openclaw_origins_result.stdout"
+      tags: [docker, configure]
