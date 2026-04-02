@@ -19,6 +19,8 @@
           - kitty-terminfo
           - docker-compose-v2
           - pandoc
+          - avahi-daemon
+          - libnss-mdns
         state: present
         update_cache: yes
       become: yes
@@ -68,6 +70,31 @@
         enabled: yes
       become: yes
       tags: [service, security]
+
+    - name: Configure avahi to advertise on LAN interface only
+      ansible.builtin.lineinfile:
+        path: /etc/avahi/avahi-daemon.conf
+        regexp: '^#?allow-interfaces='
+        line: 'allow-interfaces=enp69s0'
+      become: yes
+      notify: Restart avahi
+      tags: [configure, network]
+
+    - name: Ensure avahi-daemon is running (mDNS / .local resolution)
+      ansible.builtin.service:
+        name: avahi-daemon
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, network]
+
+    - name: Allow mDNS through UFW
+      community.general.ufw:
+        rule: allow
+        port: '5353'
+        proto: udp
+      become: yes
+      tags: [security, network]
 
     - name: Generate default postfix configuration
       ansible.builtin.copy:
@@ -154,3 +181,10 @@
           exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-4-6 "$@"
       become: yes
       tags: [configure, claude]
+
+  handlers:
+    - name: Restart avahi
+      ansible.builtin.service:
+        name: avahi-daemon
+        state: restarted
+      become: yes
