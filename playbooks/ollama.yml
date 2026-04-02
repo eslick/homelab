@@ -1,0 +1,61 @@
+---
+- name: Configure Ollama for Docker container access
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    docker_bridge_subnet: 172.18.0.0/16
+
+  tasks:
+    - name: Create Ollama systemd override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/ollama.service.d
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [configure, ollama]
+
+    - name: Bind Ollama to all interfaces so Docker containers can reach it
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/ollama.service.d/override.conf
+        mode: '0644'
+        content: |
+          [Service]
+          Environment="OLLAMA_HOST=0.0.0.0:11434"
+      become: yes
+      notify: Reload systemd and restart Ollama
+      tags: [configure, ollama]
+
+    - name: Restrict port 11434 to localhost
+      community.general.ufw:
+        rule: allow
+        port: '11434'
+        proto: tcp
+        from_ip: 127.0.0.1
+      become: yes
+      tags: [security, ollama]
+
+    - name: Restrict port 11434 to Docker bridge subnet
+      community.general.ufw:
+        rule: allow
+        port: '11434'
+        proto: tcp
+        from_ip: "{{ docker_bridge_subnet }}"
+      become: yes
+      tags: [security, ollama]
+
+    - name: Deny port 11434 from everywhere else
+      community.general.ufw:
+        rule: deny
+        port: '11434'
+        proto: tcp
+      become: yes
+      tags: [security, ollama]
+
+  handlers:
+    - name: Reload systemd and restart Ollama
+      ansible.builtin.systemd:
+        name: ollama
+        state: restarted
+        daemon_reload: yes
+      become: yes

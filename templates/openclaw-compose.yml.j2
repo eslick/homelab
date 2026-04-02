@@ -5,13 +5,14 @@ services:
     ports:
       - "{{ openclaw_port }}:18789"
     environment:
-      OPENCLAW_GATEWAY_TOKEN: "{{ openclaw_gateway_token }}"
       ANTHROPIC_API_KEY: "{{ anthropic_api_key | default('') }}"
       OPENAI_API_KEY: "{{ openai_api_key | default('') }}"
       TZ: "{{ openclaw_tz | default('America/New_York') }}"
       OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1"
     volumes:
       - openclaw-data:/home/node/.openclaw
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - {{ docker_network }}
     restart: unless-stopped
