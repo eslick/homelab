@@ -17,13 +17,19 @@
     services:
       - name: openclaw
         ports: [18789]
-        managed: false
       - name: cockroachdb
         ports: [26257, 8090]
       - name: minio
         ports: [9000, 9001]
       - name: datomic
         ports: [4334]
+
+    # OpenClaw
+    openclaw_port: 18789
+    openclaw_tz: "America/New_York"
+    openclaw_gateway_token: "{{ vault_openclaw_gateway_token }}"
+    anthropic_api_key: "{{ vault_anthropic_api_key }}"
+    openai_api_key: "{{ vault_openai_api_key | default('') }}"
 
     # CockroachDB
     cockroachdb_sql_port: 26257
@@ -153,3 +159,27 @@
         build: always
       become: yes
       tags: [docker, service]
+
+    # --- OpenClaw Gateway ---
+
+    - name: Start OpenClaw
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/openclaw"
+        state: present
+      become: yes
+      tags: [docker, service]
+
+    - name: Fix OpenClaw data volume ownership
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway chown -R node:node /home/node/.openclaw
+      become: yes
+      changed_when: false
+      tags: [docker, configure]
+
+    - name: Set OpenClaw gateway to bind on LAN interface
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway openclaw config set gateway.bind lan
+      become: yes
+      register: openclaw_bind_result
+      changed_when: "'Updated' in openclaw_bind_result.stdout"
+      tags: [docker, configure]
