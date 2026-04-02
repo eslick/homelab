@@ -1,0 +1,121 @@
+---
+- name: Configure nginx HTTPS reverse proxy via Tailscale TLS
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    tailscale_hostname: speedracer.terrier-haddock.ts.net
+    cert_dir: /etc/ssl/tailscale
+    openclaw_port: 18789
+
+  tasks:
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install]
+
+    - name: Create Tailscale cert directory
+      ansible.builtin.file:
+        path: "{{ cert_dir }}"
+        state: directory
+        mode: '0750'
+        owner: root
+        group: www-data
+      become: yes
+      tags: [configure, tls]
+
+    - name: Obtain Tailscale TLS certificate
+      ansible.builtin.command:
+        cmd: >
+          tailscale cert
+          --cert-file {{ cert_dir }}/speedracer.crt
+          --key-file {{ cert_dir }}/speedracer.key
+          {{ tailscale_hostname }}
+      become: yes
+      changed_when: false
+      tags: [configure, tls]
+
+    - name: Set cert file permissions readable by nginx
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: root
+        group: www-data
+        mode: '0640'
+      loop:
+        - "{{ cert_dir }}/speedracer.crt"
+        - "{{ cert_dir }}/speedracer.key"
+      become: yes
+      when: not ansible_check_mode
+      tags: [configure, tls]
+
+    - name: Deploy nginx site config for OpenClaw
+      ansible.builtin.template:
+        src: ../templates/openclaw-nginx.conf.j2
+        dest: /etc/nginx/sites-available/openclaw
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure]
+
+    - name: Enable nginx site for OpenClaw
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/openclaw
+        dest: /etc/nginx/sites-enabled/openclaw
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure]
+
+    - name: Disable nginx default site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      become: yes
+      notify: Reload nginx
+      tags: [configure]
+
+    - name: Ensure nginx is running and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: yes
+      become: yes
+      ignore_errors: "{{ ansible_check_mode }}"
+      tags: [service]
+
+    - name: Allow HTTPS through UFW on Tailscale interface
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+        port: '443'
+        proto: tcp
+      become: yes
+      tags: [security]
+
+    - name: Schedule weekly Tailscale cert renewal
+      ansible.builtin.cron:
+        name: tailscale-cert-renew
+        job: >-
+          tailscale cert
+          --cert-file {{ cert_dir }}/speedracer.crt
+          --key-file {{ cert_dir }}/speedracer.key
+          {{ tailscale_hostname }}
+          && systemctl reload nginx
+        weekday: '0'
+        hour: '3'
+        minute: '0'
+        user: root
+      become: yes
+      tags: [configure, cron]
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+      become: yes

@@ -194,7 +194,7 @@
           - config
           - set
           - gateway.controlUi.allowedOrigins
-          - '["http://speedracer.terrier-haddock.ts.net:18789"]'
+          - '["https://speedracer.terrier-haddock.ts.net"]'
       become: yes
       register: openclaw_origins_result
       changed_when: "'Updated' in openclaw_origins_result.stdout"
