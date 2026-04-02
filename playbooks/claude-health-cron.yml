@@ -119,22 +119,65 @@
         - { name: evening, hour: "20" }
       tags: [claude, cron]
 
-    - name: Schedule OpenClaw deep security audit (daily 2am)
+    - name: Deploy OpenClaw security audit script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/homelab-openclaw-audit.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # OpenClaw security audit: collect output, apply fixes, then have Claude
+          # interpret results and email if action is needed.
+
+          cd {{ homelab_dir }}
+          export ANTHROPIC_API_KEY="$(cat {{ api_key_file }} 2>/dev/null)"
+
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ERROR: No API key found at {{ api_key_file }}" | \
+              mail -s "[HOMELAB ERROR] OpenClaw audit: missing API key" {{ alert_email }}
+            exit 1
+          fi
+
+          touch /tmp/.openclaw-audit-start
+
+          # Run deep audit and auto-fix, capture all output
+          AUDIT_DATA="$(docker exec openclaw-gateway openclaw security audit --deep 2>&1)"
+          FIX_DATA="$(docker exec openclaw-gateway openclaw security audit --fix 2>&1)"
+
+          /home/eslick/.local/bin/claude -p \
+            --model claude-sonnet-4-6 \
+            --allowedTools "Write" \
+            --max-turns 3 \
+            "You are reviewing an OpenClaw security audit. Interpret the results below and write a markdown report to health-reports/openclaw-audit-\$(date +%Y-%m-%d-%H).md.
+
+          If any findings require manual intervention that could not be auto-fixed, prefix the filename with ALERT- instead.
+
+          Include: summary of findings, what was auto-fixed, and any remaining actions needed.
+
+          === AUDIT OUTPUT ===
+          ${AUDIT_DATA}
+
+          === AUTO-FIX OUTPUT ===
+          ${FIX_DATA}"
+
+          # Email if any ALERT report was created
+          ALERT_FILE=\$(find {{ homelab_dir }}/health-reports -name "ALERT-openclaw-audit-\$(date +%Y-%m-%d-%H)*" -newer /tmp/.openclaw-audit-start 2>/dev/null | head -1)
+          if [ -n "\$ALERT_FILE" ]; then
+            pandoc "\$ALERT_FILE" -f markdown -t html --standalone \
+              --metadata title="OpenClaw Security Alert" | \
+              mail -a "Content-Type: text/html" \
+                -s "[HOMELAB ALERT] \$(basename "\$ALERT_FILE")" {{ alert_email }}
+          fi
+
+          git add health-reports/ && git commit -m "openclaw-audit: \$(date +%Y-%m-%d-%H)" && git push
+          echo "OpenClaw audit completed at \$(date)"
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Schedule OpenClaw security audit (daily 2am)
       ansible.builtin.cron:
         name: openclaw-security-audit
         minute: "0"
         hour: "2"
-        job: "docker exec openclaw-gateway openclaw security audit --deep >> /var/log/openclaw-security.log 2>&1"
-        user: root
-      become: yes
-      tags: [openclaw, cron]
-
-    - name: Schedule OpenClaw security fix (daily 2:05am, after audit)
-      ansible.builtin.cron:
-        name: openclaw-security-fix
-        minute: "5"
-        hour: "2"
-        job: "docker exec openclaw-gateway openclaw security audit --fix >> /var/log/openclaw-security.log 2>&1"
-        user: root
-      become: yes
+        job: "/usr/local/bin/homelab-openclaw-audit.sh >> /var/log/openclaw-security.log 2>&1"
+        user: eslick
       tags: [openclaw, cron]
