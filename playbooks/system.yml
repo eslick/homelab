@@ -86,6 +86,38 @@
       become: yes
       tags: [service]
 
+    - name: Add GitHub CLI apt repository key
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+        creates: /usr/share/keyrings/githubcli-archive-keyring.gpg
+      become: yes
+      tags: [install, github]
+
+    - name: Add GitHub CLI apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+        state: present
+        filename: github-cli
+      become: yes
+      tags: [install, github]
+
+    - name: Install GitHub CLI
+      ansible.builtin.apt:
+        name: gh
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, github]
+
+    - name: Install MCP Toolbox for Databases (genai-toolbox)
+      ansible.builtin.get_url:
+        url: "https://storage.googleapis.com/genai-toolbox/v0.31.0/linux/amd64/toolbox"
+        dest: /usr/local/bin/toolbox
+        mode: '0755'
+        checksum: "sha256:f709e43f45b899a5c84abdfd1b2082ff5187c4d133c5a824c83411e2fc880e24"
+      become: yes
+      tags: [install, cockroachdb]
+
     - name: Remove old npm global Claude installation
       ansible.builtin.command:
         cmd: npm -g uninstall @anthropic-ai/claude-code
