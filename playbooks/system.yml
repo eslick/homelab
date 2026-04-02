@@ -145,6 +145,24 @@
       become: yes
       tags: [install, cockroachdb]
 
+    - name: Install Go (required for sonoscli)
+      ansible.builtin.apt:
+        name: golang-go
+        state: present
+      become: yes
+      tags: [install, sonos]
+
+    - name: Install sonoscli
+      ansible.builtin.shell:
+        cmd: go install github.com/steipete/sonoscli/cmd/sonos@latest
+        creates: /home/eslick/go/bin/sonos
+      become: yes
+      become_user: eslick
+      environment:
+        HOME: /home/eslick
+        GOPATH: /home/eslick/go
+      tags: [install, sonos]
+
     - name: Remove old npm global Claude installation
       ansible.builtin.command:
         cmd: npm -g uninstall @anthropic-ai/claude-code
