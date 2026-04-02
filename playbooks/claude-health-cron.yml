@@ -118,3 +118,23 @@
         - { name: afternoon, hour: "14" }
         - { name: evening, hour: "20" }
       tags: [claude, cron]
+
+    - name: Schedule OpenClaw deep security audit (daily 2am)
+      ansible.builtin.cron:
+        name: openclaw-security-audit
+        minute: "0"
+        hour: "2"
+        job: "docker exec openclaw-gateway openclaw security audit --deep >> /var/log/openclaw-security.log 2>&1"
+        user: root
+      become: yes
+      tags: [openclaw, cron]
+
+    - name: Schedule OpenClaw security fix (daily 2:05am, after audit)
+      ansible.builtin.cron:
+        name: openclaw-security-fix
+        minute: "5"
+        hour: "2"
+        job: "docker exec openclaw-gateway openclaw security audit --fix >> /var/log/openclaw-security.log 2>&1"
+        user: root
+      become: yes
+      tags: [openclaw, cron]
