@@ -3,7 +3,8 @@ services:
     image: "ghcr.io/openclaw/openclaw:{{ openclaw_version | default('latest') }}"
     container_name: openclaw-gateway
     ports:
-      - "{{ openclaw_port }}:18789"
+      - "127.0.0.1:{{ openclaw_port }}:18789"
+      - "127.0.0.1:2099:2099"
     environment:
       ANTHROPIC_API_KEY: "{{ anthropic_api_key | default('') }}"
       OPENAI_API_KEY: "{{ openai_api_key | default('') }}"

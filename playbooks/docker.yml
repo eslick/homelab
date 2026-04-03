@@ -16,7 +16,7 @@
 
     services:
       - name: openclaw
-        ports: [18789]
+        ports: [18789, 2099]
       - name: cockroachdb
         ports: [26257, 8090]
       - name: minio
@@ -73,10 +73,12 @@
       tags: [docker, configure]
 
     - name: Allow service ports through UFW
-      ansible.builtin.command: "ufw allow {{ item.1 }}/tcp"
+      community.general.ufw:
+        rule: allow
+        port: '{{ item.1 }}'
+        proto: tcp
       loop: "{{ services | subelements('ports') }}"
       become: yes
-      changed_when: true
       tags: [docker, security]
 
     # --- CockroachDB (must start first, Datomic depends on it) ---
@@ -184,6 +186,22 @@
       changed_when: "'Updated' in openclaw_bind_result.stdout"
       tags: [docker, configure]
 
+    - name: Configure manifest plugin to bind on all interfaces
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - config
+          - set
+          - plugins.entries.manifest.config.host
+          - "0.0.0.0"
+      become: yes
+      register: openclaw_manifest_host_result
+      changed_when: "'Updated' in openclaw_manifest_host_result.stdout"
+      tags: [docker, configure]
+
     - name: Allow OpenClaw control UI from Tailscale origin
       ansible.builtin.command:
         argv:
@@ -194,7 +212,7 @@
           - config
           - set
           - gateway.controlUi.allowedOrigins
-          - '["https://speedracer.terrier-haddock.ts.net"]'
+          - '["https://speedracer.terrier-haddock.ts.net","https://speedracer.terrier-haddock.ts.net:{{ openclaw_port }}"]'
       become: yes
       register: openclaw_origins_result
       changed_when: "'Updated' in openclaw_origins_result.stdout"

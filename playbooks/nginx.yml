@@ -1,10 +1,11 @@
 ---
 - name: Configure nginx HTTPS reverse proxy via Tailscale TLS
   hosts: homelab
-  gather_facts: no
+  gather_facts: yes
 
   vars:
     tailscale_hostname: speedracer.terrier-haddock.ts.net
+    tailscale_ip: "{{ ansible_tailscale0.ipv4.address }}"
     cert_dir: /etc/ssl/tailscale
     openclaw_port: 18789
 
@@ -87,13 +88,27 @@
       ignore_errors: "{{ ansible_check_mode }}"
       tags: [service]
 
-    - name: Allow HTTPS through UFW on Tailscale interface
+    - name: Remove stale UFW rule for port 443 on Tailscale interface
       community.general.ufw:
         rule: allow
         interface: tailscale0
         direction: in
         port: '443'
         proto: tcp
+        delete: yes
+      become: yes
+      tags: [security]
+
+    - name: Allow nginx ports through UFW on Tailscale interface
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+        port: '{{ item }}'
+        proto: tcp
+      loop:
+        - '{{ openclaw_port }}'
+        - '2099'
       become: yes
       tags: [security]
 
