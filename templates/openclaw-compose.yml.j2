@@ -1,6 +1,7 @@
 services:
   openclaw-gateway:
-    image: "ghcr.io/openclaw/openclaw:{{ openclaw_version | default('latest') }}"
+    build: .
+    image: "openclaw-gateway:local"
     container_name: openclaw-gateway
     ports:
       - "127.0.0.1:{{ openclaw_port }}:18789"
@@ -12,6 +13,7 @@ services:
       OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1"
     volumes:
       - openclaw-data:/home/node/.openclaw
+      - {{ vault_path }}:/vault:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
