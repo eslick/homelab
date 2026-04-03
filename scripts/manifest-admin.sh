@@ -1,24 +1,19 @@
 #!/usr/bin/env bash
-# manifest-tunnel.sh
+# manifest-admin
 #
-# Opens a temporary SSH tunnel to Manifest admin (port 2099) on openclaw-gateway.
-# Manifest listens on 0.0.0.0 inside the container, so we run socat on the
-# speedracer HOST to bridge host:2100 → container-bridge-IP:2099, then SSH-tunnel
-# Mac:2099 → speedracer:2100.
+# Opens a temporary SSH tunnel to Manifest admin on openclaw-gateway,
+# then launches the admin page in your browser automatically.
 #
-# Usage (run from your Mac):
-#   ./manifest-tunnel.sh
-#
-# Then open: http://localhost:2099
-# Ctrl-C to tear everything down.
+# Usage: manifest-admin
 
 set -euo pipefail
 
 REMOTE="eslick@speedracer.terrier-haddock.ts.net"
 CONTAINER="openclaw-gateway"
 HOST_PORT=2100      # intermediate port on speedracer host (127.0.0.1 only)
-LOCAL_PORT=2099     # port you'll browse to on your Mac
+LOCAL_PORT=2099     # local port on this Mac
 MANIFEST_PORT=2099  # port Manifest listens on inside the container
+ADMIN_URL="http://localhost:${LOCAL_PORT}"
 
 cleanup() {
   echo ""
@@ -36,20 +31,17 @@ if [[ -z "$CONTAINER_IP" ]]; then
   echo "ERROR: could not resolve container IP for ${CONTAINER}" >&2
   exit 1
 fi
-echo "  Container IP: ${CONTAINER_IP}"
 
-echo "Starting socat on speedracer host (127.0.0.1:${HOST_PORT} → ${CONTAINER_IP}:${MANIFEST_PORT})..."
+echo "Starting socat bridge on speedracer (127.0.0.1:${HOST_PORT} → ${CONTAINER_IP}:${MANIFEST_PORT})..."
 ssh "$REMOTE" "nohup socat \
   TCP-LISTEN:${HOST_PORT},bind=127.0.0.1,reuseaddr,fork \
   TCP:${CONTAINER_IP}:${MANIFEST_PORT} \
   </dev/null >/tmp/manifest-socat.log 2>&1 &"
 
-# Give socat a moment to start
 sleep 1
 
-echo "Tunnel open: localhost:${LOCAL_PORT} → speedracer:${HOST_PORT} → ${CONTAINER_IP}:${MANIFEST_PORT}"
-echo "Open: http://localhost:${LOCAL_PORT}"
-echo "Press Ctrl-C to close."
+echo "Opening ${ADMIN_URL} ..."
+open "$ADMIN_URL"
 
-# Block until Ctrl-C; -N = no command, just forward
+echo "Tunnel active. Press Ctrl-C to close."
 ssh -N -L "${LOCAL_PORT}:127.0.0.1:${HOST_PORT}" "$REMOTE"
