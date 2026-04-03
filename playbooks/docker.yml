@@ -278,6 +278,22 @@
       become: yes
       tags: [openclaw, service]
 
+    - name: Start Manifest loopback relay (socat inside container)
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway pgrep -f "socat TCP-LISTEN:2100"
+      become: yes
+      register: socat_check
+      changed_when: false
+      failed_when: false
+      tags: [openclaw, service]
+
+    - name: Launch socat relay if not already running
+      ansible.builtin.command:
+        cmd: docker exec -d openclaw-gateway socat TCP-LISTEN:2100,bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:2099
+      become: yes
+      when: socat_check.rc != 0
+      tags: [openclaw, service]
+
     - name: Fix OpenClaw data volume ownership
       ansible.builtin.command:
         cmd: docker exec openclaw-gateway chown -R node:node /home/node/.openclaw

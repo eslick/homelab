@@ -6,6 +6,7 @@ services:
     ports:
       - "127.0.0.1:{{ openclaw_port }}:18789"
       - "127.0.0.1:2099:2099"
+      - "127.0.0.1:2100:2100"
     environment:
       ANTHROPIC_API_KEY: "{{ anthropic_api_key | default('') }}"
       OPENAI_API_KEY: "{{ openai_api_key | default('') }}"
