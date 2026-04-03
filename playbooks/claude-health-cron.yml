@@ -106,11 +106,11 @@
       become: yes
       tags: [claude]
 
-    - name: Suppress cron emails (script handles its own alerting)
+    - name: Set cron MAILTO to correct address
       ansible.builtin.cron:
         name: MAILTO
         env: yes
-        value: ""
+        value: "ian@vitalreactor.com"
         user: eslick
       tags: [claude, cron]
 
