@@ -106,17 +106,35 @@
       become: yes
       tags: [claude]
 
-    - name: Schedule health checks (8am, 2pm, 8pm)
+    - name: Suppress cron emails (script handles its own alerting)
       ansible.builtin.cron:
-        name: "claude-health-check-{{ item.name }}"
+        name: MAILTO
+        env: yes
+        value: ""
+        user: eslick
+      tags: [claude, cron]
+
+    - name: Remove retired afternoon health check
+      ansible.builtin.cron:
+        name: claude-health-check-afternoon
+        state: absent
+        user: eslick
+      tags: [claude, cron]
+
+    - name: Remove retired evening health check
+      ansible.builtin.cron:
+        name: claude-health-check-evening
+        state: absent
+        user: eslick
+      tags: [claude, cron]
+
+    - name: Schedule daily health check (8am)
+      ansible.builtin.cron:
+        name: claude-health-check-morning
         minute: "0"
-        hour: "{{ item.hour }}"
+        hour: "8"
         job: "{{ health_script }} >> /var/log/claude-health.log 2>&1"
         user: eslick
-      loop:
-        - { name: morning, hour: "8" }
-        - { name: afternoon, hour: "14" }
-        - { name: evening, hour: "20" }
       tags: [claude, cron]
 
     - name: Deploy OpenClaw security audit script
