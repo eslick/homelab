@@ -325,7 +325,7 @@
       changed_when: "'Updated' in openclaw_origins_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Register google-workspace MCP server
+    - name: Register google-workspace-vr MCP server
       ansible.builtin.command:
         argv:
           - docker
@@ -334,9 +334,25 @@
           - openclaw
           - mcp
           - set
-          - google-workspace
-          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token.json"}}'
+          - google-workspace-vr
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-vr.json"}}'
       become: yes
-      register: openclaw_mcp_result
-      changed_when: "'Updated' in openclaw_mcp_result.stdout"
+      register: openclaw_mcp_vr_result
+      changed_when: "'Updated' in openclaw_mcp_vr_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Register google-workspace-gmail MCP server
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - mcp
+          - set
+          - google-workspace-gmail
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-gmail.json"}}'
+      become: yes
+      register: openclaw_mcp_gmail_result
+      changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
       tags: [openclaw, configure]

@@ -3,6 +3,6 @@
 secrets/
 *.vault
 credentials.json
-token.json
+*token.json
 __pycache__/
 health-reports/   # optional: comment out if you want reports in git
