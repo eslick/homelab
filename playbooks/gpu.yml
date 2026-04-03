@@ -1,0 +1,94 @@
+---
+# Installs NVIDIA CUDA drivers, NVIDIA Container Toolkit, and Ollama.
+# GPU: RTX 3090 (24GB) + GT 1030
+
+- name: Configure GPU stack
+  hosts: homelab
+  gather_facts: yes
+
+  vars:
+    cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+    nvidia_container_key_url: https://nvidia.github.io/libnvidia-container/gpgkey
+    nvidia_container_list_url: https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list
+
+  tasks:
+    # --- NVIDIA CUDA Drivers ---
+    - name: Download CUDA keyring package
+      ansible.builtin.get_url:
+        url: "{{ cuda_keyring_url }}"
+        dest: /tmp/cuda-keyring.deb
+        mode: '0644'
+      tags: [install, gpu]
+
+    - name: Install CUDA keyring package
+      ansible.builtin.apt:
+        deb: /tmp/cuda-keyring.deb
+      become: yes
+      tags: [install, gpu]
+
+    - name: Install CUDA drivers
+      ansible.builtin.apt:
+        name:
+          - cuda-drivers
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, gpu]
+
+    # --- NVIDIA Container Toolkit (for Docker GPU access) ---
+    - name: Add NVIDIA Container Toolkit GPG key
+      ansible.builtin.shell: |
+        curl -fsSL {{ nvidia_container_key_url }} | \
+          gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+      become: yes
+      tags: [install, gpu, docker]
+
+    - name: Add NVIDIA Container Toolkit apt repository
+      ansible.builtin.shell: |
+        curl -fsSL {{ nvidia_container_list_url }} | \
+          sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' | \
+          tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+      args:
+        creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+      become: yes
+      tags: [install, gpu, docker]
+
+    - name: Install NVIDIA Container Toolkit
+      ansible.builtin.apt:
+        name: nvidia-container-toolkit
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, gpu, docker]
+
+    - name: Configure Docker to use NVIDIA runtime
+      ansible.builtin.command: nvidia-ctk runtime configure --runtime=docker
+      become: yes
+      changed_when: true
+      notify: restart docker
+      tags: [configure, gpu, docker]
+
+    # --- Ollama ---
+    - name: Install Ollama
+      ansible.builtin.shell: curl -fsSL https://ollama.com/install.sh | sh
+      args:
+        creates: /usr/local/bin/ollama
+      become: yes
+      tags: [install, gpu, ollama]
+
+    - name: Ensure Ollama service is running and enabled
+      ansible.builtin.service:
+        name: ollama
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, gpu, ollama]
+
+  handlers:
+    - name: restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+      become: yes

@@ -3,8 +3,8 @@
 ## Server Identity
 - OS: Ubuntu 24.04 LTS
 - Role: Single-node homelab running Docker Compose workloads
-- Containers: OpenClaw, hobby sites, utilities (see playbooks/docker.yml)
-- Backup: Restic → NAS (/mnt/nas/backups/homelab) + S3
+- Containers: OpenClaw, hobby websites, DBs and other utilities (see playbooks/docker.yml)
+- Backup: Restic → NAS (/mnt/nas/backups/homelab) (NAS backs up to S3 independently)
 - Repo: ~/homelab → GitHub (this directory)
 
 ## THE PRIME DIRECTIVE
@@ -87,7 +87,7 @@ When invoked via `claude -p` in health check mode, perform these checks and ONLY
 3. Docker containers: report any not in 'running' or 'healthy' state
 4. Restic last snapshot: alert if most recent is >25 hours old
 5. Failed systemd units: `systemctl --failed --no-pager`
-6. Pending security updates: `apt list --upgradable 2>/dev/null | grep -i security`
+6. Pending security updates: `apt list --upgradable 2>/dev/null | grep -i security`.
 
 Output: structured markdown to `health-reports/YYYY-MM-DD-HH.md`
 If any alert threshold is exceeded, prefix filename with `ALERT-`
