@@ -21,6 +21,7 @@
           - pandoc
           - avahi-daemon
           - libnss-mdns
+          - socat
         state: present
         update_cache: yes
       become: yes
