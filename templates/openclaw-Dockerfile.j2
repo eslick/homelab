@@ -1,4 +1,6 @@
 FROM ghcr.io/openclaw/openclaw:{{ openclaw_version | default('latest') }}
 USER root
-RUN npm install -g mcp-google
+RUN npm install -g mcp-google && \
+    apt-get update && apt-get install -y --no-install-recommends sqlite3 && \
+    rm -rf /var/lib/apt/lists/*
 USER node
