@@ -263,6 +263,14 @@
       become: yes
       tags: [openclaw, configure]
 
+    - name: Deploy OpenClaw entrypoint wrapper
+      ansible.builtin.copy:
+        src: "../files/openclaw-entrypoint.sh"
+        dest: "{{ compose_base }}/openclaw/openclaw-entrypoint.sh"
+        mode: '0755'
+      become: yes
+      tags: [openclaw, configure]
+
     - name: Build OpenClaw image
       ansible.builtin.command:
         cmd: docker compose -f {{ compose_base }}/openclaw/docker-compose.yml build
@@ -276,22 +284,6 @@
         project_src: "{{ compose_base }}/openclaw"
         state: present
       become: yes
-      tags: [openclaw, service]
-
-    - name: Start Manifest loopback relay (socat inside container)
-      ansible.builtin.command:
-        cmd: docker exec openclaw-gateway pgrep -f "socat TCP-LISTEN:2100"
-      become: yes
-      register: socat_check
-      changed_when: false
-      failed_when: false
-      tags: [openclaw, service]
-
-    - name: Launch socat relay if not already running
-      ansible.builtin.command:
-        cmd: docker exec -d openclaw-gateway socat TCP-LISTEN:2100,bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:2099
-      become: yes
-      when: socat_check.rc != 0
       tags: [openclaw, service]
 
     - name: Fix OpenClaw data volume ownership
