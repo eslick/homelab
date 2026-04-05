@@ -70,21 +70,7 @@
       notify: restart docker
       tags: [configure, gpu, docker]
 
-    # --- Ollama ---
-    - name: Install Ollama
-      ansible.builtin.shell: curl -fsSL https://ollama.com/install.sh | sh
-      args:
-        creates: /usr/local/bin/ollama
-      become: yes
-      tags: [install, gpu, ollama]
-
-    - name: Ensure Ollama service is running and enabled
-      ansible.builtin.service:
-        name: ollama
-        state: started
-        enabled: yes
-      become: yes
-      tags: [service, gpu, ollama]
+    # Ollama removed — replaced by vLLM (see playbooks/vllm.yml)
 
   handlers:
     - name: restart docker

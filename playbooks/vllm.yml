@@ -1,0 +1,181 @@
+---
+# Replaces Ollama with vLLM for local GPU inference on the RTX 3090 (24GB).
+# Serves a single model via OpenAI-compatible API on 127.0.0.1:8000.
+# After startup, registers the endpoint as a provider in Manifest.
+#
+# Prerequisites: NVIDIA Container Toolkit + Docker GPU runtime (playbooks/gpu.yml)
+
+- name: Deploy vLLM inference service
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    vllm_model: "Qwen/Qwen3-30B-A3B"
+    vllm_served_name: qwen3-local
+    vllm_port: 8000
+    vllm_max_model_len: 32768
+    vllm_gpu_mem_utilization: "0.90"
+    docker_bridge_subnet: 172.18.0.0/16
+    compose_base: /opt/compose
+
+  tasks:
+
+    # --- Remove leftover two-service setup if present ---
+
+    - name: Remove old vllm-gemma compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/vllm-gemma"
+        state: absent
+      become: yes
+      tags: [vllm, cleanup]
+
+    - name: Remove old vllm-qwen compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/vllm-qwen"
+        state: absent
+      become: yes
+      tags: [vllm, cleanup]
+
+    # --- Remove old UFW rules for split ports ---
+
+    - name: Remove old UFW rules for ports 8010/8011
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: tcp
+        from_ip: "{{ item.from }}"
+        delete: yes
+      loop:
+        - { port: '8010', from: '127.0.0.1' }
+        - { port: '8010', from: "{{ docker_bridge_subnet }}" }
+        - { port: '8011', from: '127.0.0.1' }
+        - { port: '8011', from: "{{ docker_bridge_subnet }}" }
+      become: yes
+      failed_when: false
+      tags: [vllm, security, cleanup]
+
+    # --- Remove Ollama (idempotent — safe if already gone) ---
+
+    - name: Stop Ollama service
+      ansible.builtin.systemd:
+        name: ollama
+        state: stopped
+        enabled: no
+      become: yes
+      failed_when: false
+      tags: [ollama, remove]
+
+    - name: Remove Ollama binary
+      ansible.builtin.file:
+        path: /usr/local/bin/ollama
+        state: absent
+      become: yes
+      tags: [ollama, remove]
+
+    - name: Remove Ollama systemd unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/ollama.service
+        state: absent
+      become: yes
+      notify: Reload systemd
+      tags: [ollama, remove]
+
+    - name: Remove Ollama systemd override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/ollama.service.d
+        state: absent
+      become: yes
+      tags: [ollama, remove]
+
+    - name: Remove UFW rules for ollama port 11434
+      community.general.ufw:
+        rule: "{{ item.rule }}"
+        port: '11434'
+        proto: tcp
+        from_ip: "{{ item.from | default(omit) }}"
+        delete: yes
+      loop:
+        - { rule: allow, from: '127.0.0.1' }
+        - { rule: allow, from: "{{ docker_bridge_subnet }}" }
+        - { rule: deny }
+      become: yes
+      failed_when: false
+      tags: [ollama, remove, security]
+
+    # --- vLLM compose project ---
+
+    - name: Create vllm compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/vllm"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [vllm, configure]
+
+    - name: Deploy vllm compose file
+      ansible.builtin.template:
+        src: "../templates/vllm-compose.yml.j2"
+        dest: "{{ compose_base }}/vllm/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [vllm, configure]
+
+    # --- UFW rules for vLLM port ---
+
+    - name: Allow vLLM port from localhost
+      community.general.ufw:
+        rule: allow
+        port: "{{ vllm_port }}"
+        proto: tcp
+        from_ip: 127.0.0.1
+      become: yes
+      tags: [vllm, security]
+
+    - name: Allow vLLM port from Docker bridge
+      community.general.ufw:
+        rule: allow
+        port: "{{ vllm_port }}"
+        proto: tcp
+        from_ip: "{{ docker_bridge_subnet }}"
+      become: yes
+      tags: [vllm, security]
+
+    # --- Start vLLM ---
+
+    - name: Start vllm
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/vllm"
+        state: present
+      become: yes
+      tags: [vllm, service]
+
+    # --- Wait for vLLM to be healthy before registering with Manifest ---
+
+    - name: Wait for vLLM to be ready
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ vllm_port }}/health"
+        status_code: 200
+      retries: 30
+      delay: 10
+      register: vllm_health
+      until: vllm_health.status == 200
+      tags: [vllm, service, manifest]
+
+    # --- Register vLLM as a provider in Manifest ---
+
+    - name: Register vLLM provider in Manifest
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: >
+          node dist/index.js config set models.providers.local-vllm
+          '{"baseUrl":"http://host.docker.internal:{{ vllm_port }}/v1","api":"openai-completions","apiKey":"none","models":[{"id":"{{ vllm_served_name }}","name":"Local vLLM ({{ vllm_model }})"}]}'
+      become: yes
+      register: manifest_provider_result
+      changed_when: "'Updated' in manifest_provider_result.stdout"
+      tags: [vllm, manifest]
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      become: yes

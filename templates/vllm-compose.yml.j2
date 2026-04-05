@@ -1,0 +1,29 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HUGGING_FACE_HUB_TOKEN={{ vault_hf_token | default('') }}
+    volumes:
+      - vllm-models:/root/.cache/huggingface
+    ports:
+      - "127.0.0.1:{{ vllm_port }}:8000"
+    command: >
+      --model {{ vllm_model }}
+      --quantization fp8
+      --max-model-len {{ vllm_max_model_len }}
+      --gpu-memory-utilization {{ vllm_gpu_mem_utilization }}
+      --served-model-name {{ vllm_served_name }}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  vllm-models:
