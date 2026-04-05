@@ -126,13 +126,15 @@
           TOGETHER_ID=$(echo $RESP | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\" 2>/dev/null);
           fi;
           [ -z \"$TOGETHER_ID\" ] && echo 'ERROR: could not get together provider id' && exit 1;
-          for OLD_TIER in simple complex reasoning; do curl -sf -X DELETE $BASE/tiers/$OLD_TIER > /dev/null 2>&1 || true; done;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/small > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/standard > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"qwen3.5:27b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/local-advanced > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"Qwen/Qwen3.5-397B-A17B\\\",\\\"provider\\\":\\\"custom:$TOGETHER_ID\\\"}\" $BASE/tiers/advanced > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"nvidia/Nemotron-3-Nano\\\",\\\"provider\\\":\\\"custom:$TOGETHER_ID\\\"}\" $BASE/tiers/long-context > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"o4-mini\",\"provider\":\"openai\"}' $BASE/tiers/thinking > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/simple > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"qwen3.5:27b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/complex > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"o4-mini\",\"provider\":\"openai\"}' $BASE/tiers/reasoning > /dev/null;
           curl -sf -X POST -H 'Content-Type: application/json' -d \"{\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\",\\\"apiKey\\\":\\\"ollama\\\"}\" $BASE/providers > /dev/null;
           curl -sf -X POST -H 'Content-Type: application/json' -d \"{\\\"provider\\\":\\\"custom:$TOGETHER_ID\\\",\\\"apiKey\\\":\\\"{{ together_api_key }}\\\"}\" $BASE/providers > /dev/null;
           echo 'Manifest routing configured'"
