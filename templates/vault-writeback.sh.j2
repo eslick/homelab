@@ -2,62 +2,105 @@
 # Managed by Ansible — do not edit directly
 # See playbooks/obsidian-sync.yml
 #
-# Watches vault filesystem and pushes changes to CouchDB (LiveSync format)
+# Watches vault filesystem and pushes changes to CouchDB in LiveSync v2 format:
+#   - Note doc: lowercase _id, path (original case), children:[chunk_id], eden:{}
+#   - Leaf doc: h:<hash> id, type:leaf, data:base64
 
 VAULT_PATH="{{ vault_path }}"
 COUCH_URL="http://{{ couchdb_admin_user }}:{{ couchdb_admin_password }}@127.0.0.1:{{ couchdb_port }}"
 DB="{{ couchdb_database }}"
 
+# Compute LiveSync-compatible chunk ID: SHA-256 of raw bytes, first 8 bytes → base36
+chunk_id() {
+  python3 -c "
+import hashlib, sys
+with open(sys.argv[1], 'rb') as f:
+    data = f.read()
+h = hashlib.sha256(data).digest()
+num = int.from_bytes(h[:8], 'big')
+chars = '0123456789abcdefghijklmnopqrstuvwxyz'
+result = ''
+if num == 0:
+    result = '0'
+else:
+    while num:
+        result = chars[num % 36] + result
+        num //= 36
+print('h:' + result)
+" "$1"
+}
+
+url_encode() {
+  python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "$1"
+}
+
+couch_rev() {
+  local encoded_id="$1"
+  curl -sf "$COUCH_URL/$DB/$encoded_id" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('_rev',''))" 2>/dev/null || true
+}
+
 push_file() {
   local filepath="$1"
   local relpath="${filepath#$VAULT_PATH/}"
-  # Skip hidden files and CouchDB internals
   [[ "$relpath" == .* ]] && return
   [[ "$relpath" == */.* ]] && return
   [[ ! -f "$filepath" ]] && return
 
-  local content
+  local content size mtime cid cid_enc note_id note_id_enc
   content=$(base64 -w 0 "$filepath")
-  local size
   size=$(wc -c < "$filepath")
-  local mtime
   mtime=$(date -r "$filepath" +%s%3N)
+  cid=$(chunk_id "$filepath")
+  cid_enc=$(url_encode "$cid")
+  note_id=$(python3 -c "import sys; print(sys.argv[1].lower())" "$relpath")
+  note_id_enc=$(url_encode "$note_id")
 
-  local encoded_id
-  encoded_id=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "$relpath")
+  # Upsert leaf doc
+  local leaf_rev leaf_body
+  leaf_rev=$(couch_rev "$cid_enc")
+  leaf_body=$(python3 -c "
+import json, sys
+doc = {'type': 'leaf', 'data': sys.argv[1]}
+if sys.argv[2]: doc['_rev'] = sys.argv[2]
+print(json.dumps(doc))
+" "$content" "$leaf_rev")
+  curl -sf -X PUT "$COUCH_URL/$DB/$cid_enc" \
+    -H "Content-Type: application/json" -d "$leaf_body" > /dev/null
 
-  # Get current _rev if doc exists
-  local rev
-  rev=$(curl -sf "$COUCH_URL/$DB/$encoded_id" \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('_rev',''))" 2>/dev/null || true)
-
-  local body
-  if [[ -n "$rev" ]]; then
-    body=$(printf '{"_rev":"%s","data":"%s","ctime":%s,"mtime":%s,"size":%s,"type":"plain"}' \
-      "$rev" "$content" "$mtime" "$mtime" "$size")
-  else
-    body=$(printf '{"data":"%s","ctime":%s,"mtime":%s,"size":%s,"type":"plain"}' \
-      "$content" "$mtime" "$mtime" "$size")
-  fi
-
-  curl -sf -X PUT "$COUCH_URL/$DB/$encoded_id" \
-    -H "Content-Type: application/json" \
-    -d "$body" > /dev/null
+  # Upsert note doc (lowercase _id, original-case path, children array)
+  local note_rev note_body
+  note_rev=$(couch_rev "$note_id_enc")
+  note_body=$(python3 -c "
+import json, sys
+doc = {
+    'type': 'plain',
+    'children': [sys.argv[1]],
+    'path': sys.argv[2],
+    'ctime': int(sys.argv[3]),
+    'mtime': int(sys.argv[3]),
+    'size': int(sys.argv[4]),
+    'eden': {}
+}
+if sys.argv[5]: doc['_rev'] = sys.argv[5]
+print(json.dumps(doc))
+" "$cid" "$relpath" "$mtime" "$size" "$note_rev")
+  curl -sf -X PUT "$COUCH_URL/$DB/$note_id_enc" \
+    -H "Content-Type: application/json" -d "$note_body" > /dev/null
 
   echo "$(date -Iseconds) pushed: $relpath"
 }
 
 delete_file() {
   local relpath="$1"
-  local encoded_id
-  encoded_id=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "$relpath")
+  local note_id note_id_enc note_rev
+  note_id=$(python3 -c "import sys; print(sys.argv[1].lower())" "$relpath")
+  note_id_enc=$(url_encode "$note_id")
 
-  local rev
-  rev=$(curl -sf "$COUCH_URL/$DB/$encoded_id" \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('_rev',''))" 2>/dev/null || true)
-  [[ -z "$rev" ]] && return
+  note_rev=$(couch_rev "$note_id_enc")
+  [[ -z "$note_rev" ]] && return
 
-  curl -sf -X DELETE "$COUCH_URL/$DB/$encoded_id?rev=$rev" > /dev/null
+  curl -sf -X DELETE "$COUCH_URL/$DB/$note_id_enc?rev=$note_rev" > /dev/null
   echo "$(date -Iseconds) deleted: $relpath"
 }
 
