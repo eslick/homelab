@@ -302,6 +302,25 @@
       changed_when: "'Updated' in openclaw_bind_result.stdout"
       tags: [docker, configure]
 
+    - name: Install or update Manifest plugin to latest
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - sh
+          - -c
+          - >
+            openclaw plugins list 2>/dev/null | grep -q '^.*manifest' &&
+            openclaw plugins update manifest ||
+            openclaw plugins install manifest
+      become: yes
+      register: openclaw_manifest_install_result
+      changed_when: >
+        'Installed' in openclaw_manifest_install_result.stdout or
+        'Updated' in openclaw_manifest_install_result.stdout
+      tags: [openclaw, configure]
+
     - name: Configure manifest plugin to bind on all interfaces
       ansible.builtin.command:
         argv:
