@@ -99,6 +99,32 @@
       notify: Reload nginx
       tags: [configure]
 
+    - name: Create nginx systemd drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/nginx.service.d
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [service]
+
+    - name: Deploy nginx drop-in to start after Tailscale
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/nginx.service.d/after-tailscale.conf
+        mode: '0644'
+        content: |
+          [Unit]
+          After=tailscaled.service
+          Wants=tailscaled.service
+
+          [Service]
+          Restart=on-failure
+          RestartSec=5s
+      become: yes
+      notify:
+        - Reload systemd
+        - Restart nginx
+      tags: [service]
+
     - name: Ensure nginx is running and enabled
       ansible.builtin.service:
         name: nginx
@@ -150,6 +176,17 @@
       tags: [configure, cron]
 
   handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      become: yes
+
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+      become: yes
+
     - name: Reload nginx
       ansible.builtin.service:
         name: nginx
