@@ -17,8 +17,6 @@
     services:
       - name: openclaw
         ports: [18789, 2099]
-      - name: obsidian-couchdb
-        ports: [5984]
       - name: cockroachdb
         ports: [26257, 8090]
       - name: minio
@@ -28,10 +26,6 @@
 
     # Obsidian vault
     vault_path: /opt/vaults/obsidian
-    couchdb_port: 5984
-    couchdb_admin_user: "{{ vault_couchdb_admin_user }}"
-    couchdb_admin_password: "{{ vault_couchdb_admin_password }}"
-    couchdb_database: obsidian
     tailscale_hostname: speedracer.terrier-haddock.ts.net
 
     # OpenClaw
@@ -91,77 +85,6 @@
       loop: "{{ services | subelements('ports') }}"
       become: yes
       tags: [docker, security]
-
-    # --- Obsidian vault directory ---
-
-    - name: Create Obsidian vault directory
-      ansible.builtin.file:
-        path: "{{ vault_path }}"
-        state: directory
-        mode: '0755'
-        owner: eslick
-        group: eslick
-      become: yes
-      tags: [obsidian, configure]
-
-    # --- CouchDB for Obsidian LiveSync ---
-
-    - name: Ensure obsidian-couchdb compose directory exists
-      ansible.builtin.file:
-        path: "{{ compose_base }}/obsidian-couchdb"
-        state: directory
-        mode: '0755'
-      become: yes
-      tags: [obsidian, configure]
-
-    - name: Deploy obsidian-couchdb compose file
-      ansible.builtin.template:
-        src: ../templates/obsidian-couchdb-compose.yml.j2
-        dest: "{{ compose_base }}/obsidian-couchdb/docker-compose.yml"
-        mode: '0644'
-      become: yes
-      tags: [obsidian, configure]
-
-    - name: Deploy CouchDB local.ini config
-      ansible.builtin.template:
-        src: ../templates/obsidian-couchdb-local.ini.j2
-        dest: "{{ compose_base }}/obsidian-couchdb/obsidian.ini"
-        mode: '0644'
-      become: yes
-      tags: [obsidian, configure]
-
-    - name: Start Obsidian CouchDB
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/obsidian-couchdb"
-        state: present
-      become: yes
-      tags: [obsidian, service]
-
-    - name: Wait for CouchDB to be ready
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ couchdb_port }}/_up"
-        method: GET
-        user: "{{ couchdb_admin_user }}"
-        password: "{{ couchdb_admin_password }}"
-        force_basic_auth: yes
-        status_code: 200
-      register: couchdb_ready
-      until: couchdb_ready.status == 200
-      retries: 15
-      delay: 3
-      tags: [obsidian, configure]
-
-    - name: Create Obsidian LiveSync database in CouchDB
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ couchdb_port }}/{{ couchdb_database }}"
-        method: PUT
-        user: "{{ couchdb_admin_user }}"
-        password: "{{ couchdb_admin_password }}"
-        force_basic_auth: yes
-        status_code: [201, 412]
-      register: couchdb_create
-      changed_when: couchdb_create.status == 201
-      tags: [obsidian, configure]
 
     # --- CockroachDB (must start first, Datomic depends on it) ---
 
