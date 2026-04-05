@@ -366,6 +366,16 @@
       changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
       tags: [openclaw, configure]
 
+    - name: Remove direct ollama provider from OpenClaw (routing goes through Manifest)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config unset models.providers.ollama
+      become: yes
+      register: openclaw_remove_ollama_result
+      changed_when: "'Removed' in openclaw_remove_ollama_result.stdout"
+      failed_when: false
+      tags: [openclaw, configure]
+
     - name: Configure Manifest provider
       community.docker.docker_container_exec:
         container: openclaw-gateway
