@@ -125,10 +125,14 @@
           curl -sf -X PUT -H 'Content-Type: application/json'
             -d '{\"model\":\"o3\",\"provider\":\"openai\"}'
             $BASE/tiers/reasoning > /dev/null;
-          echo 'Manifest routing configured'"
+          echo 'Manifest routing configured'";
+          curl -sf -X POST -H 'Content-Type: application/json'
+            -d \"{\\\"provider\\\":\\\"custom:$PROVIDER_ID\\\",\\\"apiKey\\\":\\\"ollama\\\"}\"
+            $BASE/providers > /dev/null;
+          echo 'Manifest provider activated'"
       become: yes
       register: manifest_routing_result
-      changed_when: "'configured' in manifest_routing_result.stdout"
+      changed_when: "'activated' in manifest_routing_result.stdout"
       tags: [manifest, ollama, configure]
 
   handlers:
