@@ -1,12 +1,13 @@
 # Ollama + Manifest Routing Setup
 
 ## Task
-Configure Ollama for single-3090 stability, pull local inference models, and wire
+Configure Ollama for single-3090 stability, pull local inference models, wire
 Manifest tier routing inside the OpenClaw container to use local Ollama models for
-lower tiers and OpenAI o3 for reasoning.
+lower tiers, Together AI for cloud frontier models, and OpenAI o4-mini for reasoning.
 
 ## Playbook Used
-`playbooks/ollama.yml`
+`playbooks/ollama.yml` — Ollama service, model pulls, Manifest routing
+`playbooks/docker.yml` — OpenClaw compose (TOGETHER_API_KEY env var)
 
 ```bash
 # Full apply (service + models + manifest routing)
@@ -20,6 +21,10 @@ ansible-playbook playbooks/ollama.yml --tags models
 
 # Manifest routing only
 ansible-playbook playbooks/ollama.yml --tags manifest
+
+# Redeploy OpenClaw with updated env vars
+ansible-playbook playbooks/docker.yml --tags docker,configure
+ansible-playbook playbooks/docker.yml --tags openclaw,service
 ```
 
 ## Ollama Service Settings (single-3090 conservative)
@@ -32,16 +37,30 @@ ansible-playbook playbooks/ollama.yml --tags manifest
 | OLLAMA_FLASH_ATTENTION | 1 | Enable flash attention for speed |
 | OLLAMA_GPU_OVERHEAD | 2147483648 | Reserve 2 GB GPU for system |
 
+## Manifest Providers
+| Provider | Type | Base URL |
+|---|---|---|
+| ollama | custom OpenAI-compat | http://host.docker.internal:11434/v1 |
+| together | custom OpenAI-compat | https://api.together.xyz/v1 |
+| openai | native | (uses OPENAI_API_KEY from container env) |
+
 ## Manifest Tier Routing
 | Tier | Model | Provider |
 |---|---|---|
-| simple | qwen3.5:8b | ollama (local) |
+| small | gemma4:26b-a4b-it-q4_K_M | ollama (local) |
 | standard | gemma4:26b-a4b-it-q4_K_M | ollama (local) |
-| complex | qwen3.5:27b | ollama (local) |
-| reasoning | o3 | openai |
+| local-advanced | qwen3.5:27b | ollama (local) |
+| advanced | Qwen/Qwen3.5-397B-A17B | together |
+| long-context | nvidia/Nemotron-3-Nano | together |
+| thinking | o4-mini | openai |
 
 Manifest's local API is called from **inside** the container (loopback only — no
-external auth needed). The custom provider uses `http://host.docker.internal:11434/v1`.
+external auth needed). Custom providers use `http://host.docker.internal:11434/v1`
+for Ollama and `https://api.together.xyz/v1` for Together.
+
+The Together API key is stored in the Ansible vault as `together_ai_api_key` and
+injected into the container as `TOGETHER_API_KEY`. Manifest stores it internally
+via `POST /providers`.
 
 ## Verification Steps
 
@@ -53,23 +72,23 @@ curl -s http://localhost:11434/api/tags | python3 -m json.tool
 # Verify models are loaded
 ollama list
 
-# Verify Manifest tier routing (from inside container)
-docker exec openclaw-gateway curl -sf \
-  http://127.0.0.1:2099/api/v1/routing/open-claw/tiers | python3 -m json.tool
-
-# Verify custom providers
+# Verify Manifest custom providers (both should show has_api_key: true)
 docker exec openclaw-gateway curl -sf \
   http://127.0.0.1:2099/api/v1/routing/open-claw/custom-providers | python3 -m json.tool
 
-# Test a model directly
-ollama run qwen3.5:8b "say hello"
+# Verify Manifest tier routing
+docker exec openclaw-gateway curl -sf \
+  http://127.0.0.1:2099/api/v1/routing/open-claw/tiers | python3 -m json.tool
+
+# Verify TOGETHER_API_KEY in container env
+docker exec openclaw-gateway env | grep TOGETHER
 ```
 
 ## Rollback
 
 ### Revert Manifest tier routing to unset
 ```bash
-for tier in simple standard complex reasoning; do
+for tier in small standard local-advanced advanced long-context thinking; do
   docker exec openclaw-gateway curl -sf -X DELETE \
     http://127.0.0.1:2099/api/v1/routing/open-claw/tiers/$tier
 done
@@ -86,14 +105,20 @@ systemctl daemon-reload && systemctl restart ollama
 
 ## Troubleshooting
 
-**VRAM thrash / swap instability**
+**Manifest API returns empty / connection refused after container restart**
+- The API takes ~12 seconds to initialize after container start
+- Poll: `docker exec openclaw-gateway curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:2099/api/v1/routing/open-claw/custom-providers`
+- Wait until it returns 200 before running the manifest playbook tag
+
+**Together provider shows `has_api_key: false`**
+- Check that `together_ai_api_key` is set in the Ansible vault
+- Redeploy compose: `ansible-playbook playbooks/docker.yml --tags docker,configure`
+- Restart container: `ansible-playbook playbooks/docker.yml --tags openclaw,service`
+- Re-run routing: `ansible-playbook playbooks/ollama.yml --tags manifest`
+
+**VRAM thrash / swap instability (local models)**
 - Lower `OLLAMA_NUM_PARALLEL` to 1 in override.conf
 - Reduce context in Manifest tier config
 
-**Slow model swaps between Gemma and Qwen**
-- Normal on a single 3090 with `MAX_LOADED_MODELS=1`
-- Keep Gemma 4 as the default; Qwen 27B only for clearly complex tasks
-
 **Queue backups**
 - Increase `OLLAMA_MAX_QUEUE` from 32 to 64
-- Keep heartbeat output tokens very small
