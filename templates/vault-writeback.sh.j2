@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# Managed by Ansible — do not edit directly
+# See playbooks/obsidian-sync.yml
+#
+# Watches vault filesystem and pushes changes to CouchDB in LiveSync v2 format:
+#   - Note doc: lowercase _id, path (original case), children:[chunk_id], eden:{}
+#   - Leaf doc: h:<hash> id, type:leaf, data:plain_text
+# Python handles all file I/O and CouchDB HTTP calls to avoid bash arg size limits.
+
+VAULT_PATH="{{ vault_path }}"
+# Only watch agent-written directories — never the full vault (avoids sync loop
+# with obsidian-sync.py which writes MacBook vault files to the same path)
+WATCH_PATHS=("{{ vault_path }}/OpenClaw")
+COUCH_URL="http://{{ couchdb_admin_user }}:{{ couchdb_admin_password }}@127.0.0.1:{{ couchdb_port }}"
+DB="{{ couchdb_database }}"
+
+push_file() {
+  local filepath="$1"
+  local relpath="${filepath#$VAULT_PATH/}"
+  [[ "$relpath" == .* ]] && return
+  [[ "$relpath" == */.* ]] && return
+  [[ ! -f "$filepath" ]] && return
+
+  local mtime
+  mtime=$(date -r "$filepath" +%s%3N)
+
+  python3 - "$COUCH_URL" "$DB" "$filepath" "$relpath" "$mtime" <<'PYEOF'
+import sys, json, hashlib, base64, urllib.request, urllib.parse
+
+couch_url, db, filepath, relpath, mtime = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+
+# Parse credentials out of URL
+parsed = urllib.parse.urlparse(couch_url)
+auth = base64.b64encode(f"{parsed.username}:{parsed.password}".encode()).decode()
+base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}/{db}"
+headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
+
+with open(filepath, "rb") as f:
+    raw = f.read()
+
+# LiveSync stores plain text in leaf data field (no base64 encoding)
+text = raw.decode("utf-8", errors="replace")
+size = len(text)  # LiveSync size = character count of plain text
+
+# Compute chunk ID: SHA-256 first 8 bytes -> base36
+h = hashlib.sha256(raw).digest()
+num = int.from_bytes(h[:8], "big")
+chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+result = ""
+while num:
+    result = chars[num % 36] + result
+    num //= 36
+cid = "h:" + result
+cid_enc = urllib.parse.quote(cid, safe="")
+note_id_enc = urllib.parse.quote(relpath.lower(), safe="")
+
+def get_rev(doc_enc):
+    try:
+        req = urllib.request.Request(f"{base_url}/{doc_enc}", headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            return json.load(resp).get("_rev", "")
+    except Exception:
+        return ""
+
+def put_doc(doc_enc, doc):
+    data = json.dumps(doc).encode()
+    req = urllib.request.Request(f"{base_url}/{doc_enc}", data=data, method="PUT",
+                                  headers=headers)
+    with urllib.request.urlopen(req) as resp:
+        resp.read()
+
+# Upsert leaf doc
+leaf_doc = {"type": "leaf", "data": text}
+leaf_rev = get_rev(cid_enc)
+if leaf_rev:
+    leaf_doc["_rev"] = leaf_rev
+put_doc(cid_enc, leaf_doc)
+
+# Upsert note doc
+note_doc = {"type": "plain", "children": [cid], "path": relpath,
+            "ctime": mtime, "mtime": mtime, "size": size, "eden": {}}
+note_rev = get_rev(note_id_enc)
+if note_rev:
+    note_doc["_rev"] = note_rev
+put_doc(note_id_enc, note_doc)
+PYEOF
+
+  echo "$(date -Iseconds) pushed: $relpath"
+}
+
+delete_file() {
+  local relpath="$1"
+
+  python3 - "$COUCH_URL" "$DB" "$relpath" <<'PYEOF'
+import sys, json, base64, urllib.request, urllib.parse
+
+couch_url, db, relpath = sys.argv[1], sys.argv[2], sys.argv[3]
+
+parsed = urllib.parse.urlparse(couch_url)
+auth = base64.b64encode(f"{parsed.username}:{parsed.password}".encode()).decode()
+base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}/{db}"
+headers = {"Authorization": f"Basic {auth}"}
+
+note_id_enc = urllib.parse.quote(relpath.lower(), safe="")
+try:
+    req = urllib.request.Request(f"{base_url}/{note_id_enc}", headers=headers)
+    with urllib.request.urlopen(req) as resp:
+        doc = json.load(resp)
+    rev = doc.get("_rev", "")
+    if not rev:
+        sys.exit(0)
+    req = urllib.request.Request(f"{base_url}/{note_id_enc}?rev={rev}",
+                                  method="DELETE", headers=headers)
+    with urllib.request.urlopen(req) as resp:
+        resp.read()
+except Exception:
+    pass
+PYEOF
+
+  echo "$(date -Iseconds) deleted: $relpath"
+}
+
+# Watch only agent-written paths (not the full vault) to avoid sync loop
+inotifywait -m -r -e close_write,moved_to,moved_from,delete \
+  --format '%e %w%f' \
+  "${WATCH_PATHS[@]}" |
+while read -r event filepath; do
+  relpath="${filepath#$VAULT_PATH/}"
+  case "$event" in
+    CLOSE_WRITE,CLOSE|MOVED_TO)
+      push_file "$filepath"
+      ;;
+    MOVED_FROM|DELETE)
+      delete_file "$relpath"
+      ;;
+  esac
+done

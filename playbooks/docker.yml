@@ -16,14 +16,31 @@
 
     services:
       - name: openclaw
-        ports: [18789]
-        managed: false
+        ports: [18789, 2099]
+      - name: obsidian-couchdb
+        ports: [5984]
       - name: cockroachdb
         ports: [26257, 8090]
       - name: minio
         ports: [9000, 9001]
       - name: datomic
         ports: [4334]
+
+    # Obsidian vault
+    vault_path: /opt/vaults/obsidian
+    couchdb_port: 5984
+    couchdb_admin_user: "{{ vault_couchdb_admin_user }}"
+    couchdb_admin_password: "{{ vault_couchdb_admin_password }}"
+    couchdb_database: obsidian
+    tailscale_hostname: speedracer.terrier-haddock.ts.net
+
+    # OpenClaw
+    openclaw_port: 18789
+    openclaw_tz: "America/New_York"
+    openclaw_gateway_token: "{{ vault_openclaw_gateway_token }}"
+    anthropic_api_key: "{{ vault_anthropic_api_key }}"
+    openai_api_key: "{{ vault_openai_api_key | default('') }}"
+    together_api_key: "{{ together_ai_api_key | default('') }}"
 
     # CockroachDB
     cockroachdb_sql_port: 26257
@@ -67,11 +84,84 @@
       tags: [docker, configure]
 
     - name: Allow service ports through UFW
-      ansible.builtin.command: "ufw allow {{ item.1 }}/tcp"
+      community.general.ufw:
+        rule: allow
+        port: '{{ item.1 }}'
+        proto: tcp
       loop: "{{ services | subelements('ports') }}"
       become: yes
-      changed_when: true
       tags: [docker, security]
+
+    # --- Obsidian vault directory ---
+
+    - name: Create Obsidian vault directory
+      ansible.builtin.file:
+        path: "{{ vault_path }}"
+        state: directory
+        mode: '0755'
+        owner: eslick
+        group: eslick
+      become: yes
+      tags: [obsidian, configure]
+
+    # --- CouchDB for Obsidian LiveSync ---
+
+    - name: Ensure obsidian-couchdb compose directory exists
+      ansible.builtin.file:
+        path: "{{ compose_base }}/obsidian-couchdb"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [obsidian, configure]
+
+    - name: Deploy obsidian-couchdb compose file
+      ansible.builtin.template:
+        src: ../templates/obsidian-couchdb-compose.yml.j2
+        dest: "{{ compose_base }}/obsidian-couchdb/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [obsidian, configure]
+
+    - name: Deploy CouchDB local.ini config
+      ansible.builtin.template:
+        src: ../templates/obsidian-couchdb-local.ini.j2
+        dest: "{{ compose_base }}/obsidian-couchdb/obsidian.ini"
+        mode: '0644'
+      become: yes
+      tags: [obsidian, configure]
+
+    - name: Start Obsidian CouchDB
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/obsidian-couchdb"
+        state: present
+      become: yes
+      tags: [obsidian, service]
+
+    - name: Wait for CouchDB to be ready
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ couchdb_port }}/_up"
+        method: GET
+        user: "{{ couchdb_admin_user }}"
+        password: "{{ couchdb_admin_password }}"
+        force_basic_auth: yes
+        status_code: 200
+      register: couchdb_ready
+      until: couchdb_ready.status == 200
+      retries: 15
+      delay: 3
+      tags: [obsidian, configure]
+
+    - name: Create Obsidian LiveSync database in CouchDB
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ couchdb_port }}/{{ couchdb_database }}"
+        method: PUT
+        user: "{{ couchdb_admin_user }}"
+        password: "{{ couchdb_admin_password }}"
+        force_basic_auth: yes
+        status_code: [201, 412]
+      register: couchdb_create
+      changed_when: couchdb_create.status == 201
+      tags: [obsidian, configure]
 
     # --- CockroachDB (must start first, Datomic depends on it) ---
 
@@ -153,3 +243,174 @@
         build: always
       become: yes
       tags: [docker, service]
+
+    # --- OpenClaw Gateway ---
+
+    - name: Deploy OpenClaw Dockerfile
+      ansible.builtin.template:
+        src: "../templates/openclaw-Dockerfile.j2"
+        dest: "{{ compose_base }}/openclaw/Dockerfile"
+        mode: '0644'
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Create Google OAuth credentials directory
+      ansible.builtin.file:
+        path: "{{ vault_path }}/google"
+        state: directory
+        mode: '0700'
+        owner: eslick
+        group: eslick
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Deploy OpenClaw entrypoint wrapper
+      ansible.builtin.copy:
+        src: "../files/openclaw-entrypoint.sh"
+        dest: "{{ compose_base }}/openclaw/openclaw-entrypoint.sh"
+        mode: '0755'
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Build OpenClaw image
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/openclaw/docker-compose.yml build
+      become: yes
+      register: openclaw_build_result
+      changed_when: "'writing image' in openclaw_build_result.stdout"
+      tags: [openclaw, service]
+
+    - name: Start OpenClaw
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/openclaw"
+        state: present
+      become: yes
+      tags: [openclaw, service]
+
+    - name: Fix OpenClaw data volume ownership
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway chown -R node:node /home/node/.openclaw
+      become: yes
+      changed_when: false
+      tags: [docker, configure]
+
+    - name: Set OpenClaw gateway to bind on LAN interface
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway openclaw config set gateway.bind lan
+      become: yes
+      register: openclaw_bind_result
+      changed_when: "'Updated' in openclaw_bind_result.stdout"
+      tags: [docker, configure]
+
+    - name: Install or update Manifest plugin to latest
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - sh
+          - -c
+          - >
+            openclaw plugins list 2>/dev/null | grep -q '^.*manifest' &&
+            openclaw plugins update manifest ||
+            openclaw plugins install manifest
+      become: yes
+      register: openclaw_manifest_install_result
+      changed_when: >
+        'Installed' in openclaw_manifest_install_result.stdout or
+        'Updated' in openclaw_manifest_install_result.stdout
+      tags: [openclaw, configure]
+
+    - name: Configure manifest plugin to bind on all interfaces
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - config
+          - set
+          - plugins.entries.manifest.config.host
+          - "0.0.0.0"
+      become: yes
+      register: openclaw_manifest_host_result
+      changed_when: "'Updated' in openclaw_manifest_host_result.stdout"
+      tags: [docker, configure]
+
+    - name: Allow OpenClaw control UI from Tailscale origin
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - config
+          - set
+          - gateway.controlUi.allowedOrigins
+          - '["https://speedracer.terrier-haddock.ts.net","https://speedracer.terrier-haddock.ts.net:{{ openclaw_port }}"]'
+      become: yes
+      register: openclaw_origins_result
+      changed_when: "'Updated' in openclaw_origins_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Register google-workspace-vr MCP server
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - mcp
+          - set
+          - google-workspace-vr
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-vr.json"}}'
+      become: yes
+      register: openclaw_mcp_vr_result
+      changed_when: "'Updated' in openclaw_mcp_vr_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Register google-workspace-gmail MCP server
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - mcp
+          - set
+          - google-workspace-gmail
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-gmail.json"}}'
+      become: yes
+      register: openclaw_mcp_gmail_result
+      changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Remove direct ollama provider from OpenClaw (routing goes through Manifest)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config unset models.providers.ollama
+      become: yes
+      register: openclaw_remove_ollama_result
+      changed_when: "'Removed' in openclaw_remove_ollama_result.stdout"
+      failed_when: false
+      tags: [openclaw, configure]
+
+    - name: Configure Manifest provider
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: >
+          node dist/index.js config set models.providers.manifest
+          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto"}]}'
+      become: yes
+      register: openclaw_manifest_provider_result
+      changed_when: "'Updated' in openclaw_manifest_provider_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Set default model to manifest/auto
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js models set manifest/auto
+      become: yes
+      register: openclaw_default_model_result
+      changed_when: "'manifest/auto' in openclaw_default_model_result.stdout"
+      tags: [openclaw, configure]

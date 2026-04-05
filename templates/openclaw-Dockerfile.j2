@@ -1,0 +1,10 @@
+FROM ghcr.io/openclaw/openclaw:{{ openclaw_version | default('latest') }}
+USER root
+RUN npm install -g mcp-google @tobilu/qmd && \
+    apt-get update && apt-get install -y --no-install-recommends sqlite3 socat && \
+    rm -rf /var/lib/apt/lists/*
+COPY openclaw-entrypoint.sh /usr/local/bin/openclaw-entrypoint.sh
+RUN chmod +x /usr/local/bin/openclaw-entrypoint.sh
+USER node
+ENTRYPOINT ["/usr/local/bin/openclaw-entrypoint.sh"]
+CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]

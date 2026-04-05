@@ -21,6 +21,7 @@
           - pandoc
           - avahi-daemon
           - libnss-mdns
+          - socat
         state: present
         update_cache: yes
       become: yes
@@ -96,6 +97,65 @@
       become: yes
       tags: [security, network]
 
+    - name: Add Tailscale apt repository key
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
+        creates: /usr/share/keyrings/tailscale-archive-keyring.gpg
+      become: yes
+      tags: [install, tailscale]
+
+    - name: Add Tailscale apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main"
+        state: present
+        filename: tailscale
+      become: yes
+      tags: [install, tailscale]
+
+    - name: Install Tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, tailscale]
+
+    - name: Ensure tailscaled systemd override directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/tailscaled.service.d
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [configure, tailscale]
+
+    - name: Configure tailscale to start with --accept-dns=false
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/tailscaled.service.d/override.conf
+        mode: '0644'
+        content: |
+          [Service]
+          ExecStartPost=/usr/bin/tailscale up --accept-dns=false
+      become: yes
+      notify: Reload systemd and restart tailscaled
+      tags: [configure, tailscale]
+
+    - name: Ensure tailscaled is running and enabled
+      ansible.builtin.service:
+        name: tailscaled
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, tailscale]
+
+    - name: Allow Tailscale through UFW
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+      become: yes
+      ignore_errors: yes  # interface may not exist until tailscale up is run
+      tags: [security, tailscale]
+
     - name: Generate default postfix configuration
       ansible.builtin.copy:
         src: /usr/share/postfix/main.cf.debian
@@ -145,6 +205,24 @@
       become: yes
       tags: [install, cockroachdb]
 
+    - name: Install Go (required for sonoscli)
+      ansible.builtin.apt:
+        name: golang-go
+        state: present
+      become: yes
+      tags: [install, sonos]
+
+    - name: Install sonoscli
+      ansible.builtin.shell:
+        cmd: go install github.com/steipete/sonoscli/cmd/sonos@latest
+        creates: /home/eslick/go/bin/sonos
+      become: yes
+      become_user: eslick
+      environment:
+        HOME: /home/eslick
+        GOPATH: /home/eslick/go
+      tags: [install, sonos]
+
     - name: Remove old npm global Claude installation
       ansible.builtin.command:
         cmd: npm -g uninstall @anthropic-ai/claude-code
@@ -187,4 +265,11 @@
       ansible.builtin.service:
         name: avahi-daemon
         state: restarted
+      become: yes
+
+    - name: Reload systemd and restart tailscaled
+      ansible.builtin.systemd:
+        name: tailscaled
+        state: restarted
+        daemon_reload: yes
       become: yes

@@ -1,0 +1,22 @@
+# Managed by Ansible — do not edit directly
+# See playbooks/docker.yml
+
+[couchdb]
+single_node = true
+
+[chttpd]
+require_valid_user = true
+max_http_request_size = 1073741824
+
+[httpd]
+enable_cors = true
+
+[cors]
+origins = app://obsidian.md,capacitor://localhost,http://localhost,https://{{ tailscale_hostname }}
+credentials = true
+headers = accept, authorization, content-type, origin, referer
+methods = GET, PUT, POST, HEAD, DELETE
+max_age = 3600
+
+[log]
+level = warning

@@ -1,0 +1,27 @@
+services:
+  obsidian-vault-couchdb:
+    image: couchdb:3
+    container_name: obsidian-vault-couchdb
+    ports:
+      - "127.0.0.1:{{ couchdb_port }}:5984"
+    environment:
+      COUCHDB_USER: "{{ couchdb_admin_user }}"
+      COUCHDB_PASSWORD: "{{ couchdb_admin_password }}"
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+      - ./obsidian.ini:/opt/couchdb/etc/local.d/obsidian.ini
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-u", "{{ couchdb_admin_user }}:{{ couchdb_admin_password }}", "http://localhost:5984/_up"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  couchdb-data:
+
+networks:
+  {{ docker_network }}:
+    external: true
