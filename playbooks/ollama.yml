@@ -46,6 +46,7 @@
           Environment="OLLAMA_NUM_PARALLEL=2"
           Environment="OLLAMA_MAX_QUEUE=32"
           Environment="OLLAMA_FLASH_ATTENTION=1"
+          Environment="OLLAMA_KV_CACHE_TYPE=q4_0"
           Environment="OLLAMA_GPU_OVERHEAD=2147483648"
       become: yes
       notify: Reload systemd and restart Ollama
@@ -95,6 +96,20 @@
       loop: "{{ ollama_models }}"
       register: ollama_pull_result
       changed_when: "'already up to date' not in ollama_pull_result.stdout"
+      tags: [models, ollama]
+
+    - name: Copy Modelfile for gemma4-custom:26b
+      ansible.builtin.copy:
+        src: ../files/ollama-gemma4-custom-26b.Modelfile
+        dest: /tmp/ollama-gemma4-custom-26b.Modelfile
+        mode: '0644'
+      tags: [models, ollama]
+
+    - name: Create gemma4-custom:26b model from Modelfile
+      ansible.builtin.command:
+        cmd: ollama create gemma4-custom:26b -f /tmp/ollama-gemma4-custom-26b.Modelfile
+      register: ollama_create_result
+      changed_when: "'success' in ollama_create_result.stdout | lower"
       tags: [models, ollama]
 
     # --- Manifest routing (via loopback API inside container) ---
