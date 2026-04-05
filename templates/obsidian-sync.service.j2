@@ -1,0 +1,19 @@
+# Managed by Ansible — do not edit directly
+# See playbooks/obsidian-sync.yml
+
+[Unit]
+Description=Obsidian Vault LiveSync watcher
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/scripts/obsidian-sync.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=obsidian-sync
+
+[Install]
+WantedBy=multi-user.target
