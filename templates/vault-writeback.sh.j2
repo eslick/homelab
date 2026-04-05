@@ -4,7 +4,7 @@
 #
 # Watches vault filesystem and pushes changes to CouchDB in LiveSync v2 format:
 #   - Note doc: lowercase _id, path (original case), children:[chunk_id], eden:{}
-#   - Leaf doc: h:<hash> id, type:leaf, data:base64
+#   - Leaf doc: h:<hash> id, type:leaf, data:base64(content)
 # Python handles all file I/O and CouchDB HTTP calls to avoid bash arg size limits.
 
 VAULT_PATH="{{ vault_path }}"
@@ -38,8 +38,9 @@ headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
 with open(filepath, "rb") as f:
     raw = f.read()
 
-b64 = base64.b64encode(raw).decode()
-size = len(b64)  # LiveSync size = length of base64 string
+# LiveSync client (Obsidian) base64-encodes leaf data — match that format
+text = base64.b64encode(raw).decode()
+size = len(text)  # LiveSync size = length of encoded data string
 
 # Compute chunk ID: SHA-256 first 8 bytes -> base36
 h = hashlib.sha256(raw).digest()
@@ -69,7 +70,7 @@ def put_doc(doc_enc, doc):
         resp.read()
 
 # Upsert leaf doc
-leaf_doc = {"type": "leaf", "data": b64}
+leaf_doc = {"type": "leaf", "data": text}
 leaf_rev = get_rev(cid_enc)
 if leaf_rev:
     leaf_doc["_rev"] = leaf_rev

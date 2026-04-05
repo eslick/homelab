@@ -5,7 +5,6 @@
 # Syncs Obsidian vault from CouchDB (Self-hosted LiveSync) to the filesystem.
 # Runs as a systemd service (live _changes watcher) with a cron fallback.
 
-import base64
 import json
 import os
 import sys
@@ -19,6 +18,10 @@ from urllib.parse import quote
 COUCH_URL  = "http://{{ couchdb_admin_user }}:{{ couchdb_admin_password }}@localhost:{{ couchdb_port }}"
 DB         = "{{ couchdb_database }}"
 VAULT_PATH = Path("{{ vault_path }}")
+
+# Paths written by agents directly — skip syncing these from CouchDB to filesystem
+# (agents are the source of truth; vault-writeback pushes them TO CouchDB)
+SKIP_PATHS = ["OpenClaw/"]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,13 +61,13 @@ def get_all_plain_docs():
 # ---------------------------------------------------------------------------
 
 def fetch_content(plain_doc):
-    """Decode and concatenate leaf chunks to reconstruct file content."""
+    """Concatenate leaf chunk data to reconstruct file content.
+    LiveSync stores plain text directly in the data field (no base64 encoding)."""
     parts = []
     for child_id in plain_doc.get("children", []):
         leaf = get_doc(child_id)
-        raw = base64.b64decode(leaf.get("data", ""))
-        parts.append(raw)
-    return b"".join(parts).decode("utf-8", errors="replace")
+        parts.append(leaf.get("data", ""))
+    return "".join(parts)
 
 
 def write_file(path_str, content):
@@ -102,6 +105,8 @@ def full_sync():
         path = doc.get("path")
         if not path:
             continue
+        if is_skipped(path):
+            continue
         try:
             content = fetch_content(doc)
             if write_file(path, content):
@@ -115,11 +120,17 @@ def full_sync():
 # Live _changes watcher
 # ---------------------------------------------------------------------------
 
+def is_skipped(path):
+    return any(path.startswith(p) for p in SKIP_PATHS)
+
+
 def process_change(doc):
     if doc.get("type") != "plain":
         return
     path = doc.get("path")
     if not path:
+        return
+    if is_skipped(path):
         return
     if doc.get("_deleted"):
         delete_file(path)
