@@ -1,12 +1,30 @@
 ---
-- name: Configure Ollama for Docker container access
+# Configures Ollama for homelab use: conservative single-3090 service settings,
+# model pulls, UFW rules, and Manifest routing inside the OpenClaw container.
+#
+# Manifest tier → model mapping:
+#   simple   → qwen3.5:8b              (heartbeat / fast)
+#   standard → gemma4:26b-a4b-it-q4_K_M (basic / standard)
+#   complex  → qwen3.5:27b             (advanced)
+#   reasoning → o3 via openai          (reasoning — frontier, not local)
+
+- name: Configure Ollama
   hosts: homelab
   gather_facts: no
 
   vars:
     docker_bridge_subnet: 172.18.0.0/16
+    ollama_models:
+      - qwen3.5:8b
+      - gemma4:26b-a4b-it-q4_K_M
+      - qwen3.5:27b
+    manifest_agent: open-claw
+    manifest_api_base: http://127.0.0.1:2099/api/v1/routing
 
   tasks:
+
+    # --- Systemd service override ---
+
     - name: Create Ollama systemd override directory
       ansible.builtin.file:
         path: /etc/systemd/system/ollama.service.d
@@ -15,18 +33,34 @@
       become: yes
       tags: [configure, ollama]
 
-    - name: Bind Ollama to all interfaces so Docker containers can reach it
+    - name: Deploy Ollama service override (single-3090 conservative settings)
       ansible.builtin.copy:
         dest: /etc/systemd/system/ollama.service.d/override.conf
         mode: '0644'
         content: |
           [Service]
           Environment="OLLAMA_HOST=0.0.0.0:11434"
+          Environment="OLLAMA_KEEP_ALIVE=15m"
+          Environment="OLLAMA_MAX_LOADED_MODELS=1"
+          Environment="OLLAMA_NUM_PARALLEL=2"
+          Environment="OLLAMA_MAX_QUEUE=32"
+          Environment="OLLAMA_FLASH_ATTENTION=1"
+          Environment="OLLAMA_GPU_OVERHEAD=2147483648"
       become: yes
       notify: Reload systemd and restart Ollama
       tags: [configure, ollama]
 
-    - name: Restrict port 11434 to localhost
+    - name: Ensure Ollama is running and enabled
+      ansible.builtin.systemd:
+        name: ollama
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, ollama]
+
+    # --- UFW rules ---
+
+    - name: Allow port 11434 from localhost
       community.general.ufw:
         rule: allow
         port: '11434'
@@ -35,7 +69,7 @@
       become: yes
       tags: [security, ollama]
 
-    - name: Restrict port 11434 to Docker bridge subnet
+    - name: Allow port 11434 from Docker bridge subnet
       community.general.ufw:
         rule: allow
         port: '11434'
@@ -51,6 +85,51 @@
         proto: tcp
       become: yes
       tags: [security, ollama]
+
+    # --- Model downloads ---
+
+    - name: Pull Ollama models
+      ansible.builtin.command:
+        cmd: "ollama pull {{ item }}"
+      loop: "{{ ollama_models }}"
+      register: ollama_pull_result
+      changed_when: "'already up to date' not in ollama_pull_result.stdout"
+      tags: [models, ollama]
+
+    # --- Manifest routing (via loopback API inside container) ---
+    # Calls Manifest's local API from inside the container (loopback = trusted, no auth needed).
+    # The script is idempotent: get-or-create the ollama provider, then set all tier overrides.
+
+    - name: Configure Manifest routing for ollama
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: >
+          sh -c "
+          BASE='http://127.0.0.1:2099/api/v1/routing/{{ manifest_agent }}';
+          EXISTING=$(curl -sf $BASE/custom-providers);
+          PROVIDER_ID=$(echo $EXISTING | python3 -c \"import json,sys; p=[x for x in json.load(sys.stdin) if x['name']=='ollama']; print(p[0]['id'] if p else '')\" 2>/dev/null);
+          if [ -z \"$PROVIDER_ID\" ]; then
+            RESP=$(curl -sf -X POST -H 'Content-Type: application/json'
+              -d '{\"name\":\"ollama\",\"base_url\":\"http://host.docker.internal:11434/v1\",\"models\":[{\"model_name\":\"qwen3.5:8b\"},{\"model_name\":\"gemma4:26b-a4b-it-q4_K_M\"},{\"model_name\":\"qwen3.5:27b\"}]}'
+              $BASE/custom-providers) || exit 1;
+            PROVIDER_ID=$(echo $RESP | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\" 2>/dev/null);
+          fi;
+          [ -z \"$PROVIDER_ID\" ] && echo 'ERROR: could not get provider id' && exit 1;
+          for TIER_MODEL in 'simple|qwen3.5:8b' 'standard|gemma4:26b-a4b-it-q4_K_M' 'complex|qwen3.5:27b'; do
+            TIER=$(echo $TIER_MODEL | cut -d'|' -f1);
+            MODEL=$(echo $TIER_MODEL | cut -d'|' -f2);
+            curl -sf -X PUT -H 'Content-Type: application/json'
+              -d \"{\\\"model\\\":\\\"$MODEL\\\",\\\"provider\\\":\\\"custom:$PROVIDER_ID\\\"}\"
+              $BASE/tiers/$TIER > /dev/null;
+          done;
+          curl -sf -X PUT -H 'Content-Type: application/json'
+            -d '{\"model\":\"o3\",\"provider\":\"openai\"}'
+            $BASE/tiers/reasoning > /dev/null;
+          echo 'Manifest routing configured'"
+      become: yes
+      register: manifest_routing_result
+      changed_when: "'configured' in manifest_routing_result.stdout"
+      tags: [manifest, ollama, configure]
 
   handlers:
     - name: Reload systemd and restart Ollama
