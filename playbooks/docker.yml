@@ -379,8 +379,8 @@
     - name: Set default model to manifest/auto
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.model.primary manifest/auto
+        command: node dist/index.js models set manifest/auto
       become: yes
       register: openclaw_default_model_result
-      changed_when: "'Updated' in openclaw_default_model_result.stdout"
+      changed_when: "'manifest/auto' in openclaw_default_model_result.stdout"
       tags: [openclaw, configure]
