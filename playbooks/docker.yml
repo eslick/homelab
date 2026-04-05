@@ -364,3 +364,23 @@
       register: openclaw_mcp_gmail_result
       changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
       tags: [openclaw, configure]
+
+    - name: Configure Manifest provider
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: >
+          node dist/index.js config set models.providers.manifest
+          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto"}]}'
+      become: yes
+      register: openclaw_manifest_provider_result
+      changed_when: "'Updated' in openclaw_manifest_provider_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Set default model to manifest/auto
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.model.primary manifest/auto
+      become: yes
+      register: openclaw_default_model_result
+      changed_when: "'Updated' in openclaw_default_model_result.stdout"
+      tags: [openclaw, configure]
