@@ -8,6 +8,9 @@
 # Python handles all file I/O and CouchDB HTTP calls to avoid bash arg size limits.
 
 VAULT_PATH="{{ vault_path }}"
+# Only watch agent-written directories — never the full vault (avoids sync loop
+# with obsidian-sync.py which writes MacBook vault files to the same path)
+WATCH_PATHS=("{{ vault_path }}/OpenClaw")
 COUCH_URL="http://{{ couchdb_admin_user }}:{{ couchdb_admin_password }}@127.0.0.1:{{ couchdb_port }}"
 DB="{{ couchdb_database }}"
 
@@ -116,10 +119,10 @@ PYEOF
   echo "$(date -Iseconds) deleted: $relpath"
 }
 
-# Watch for close_write (file finished writing), moves, and deletes
+# Watch only agent-written paths (not the full vault) to avoid sync loop
 inotifywait -m -r -e close_write,moved_to,moved_from,delete \
   --format '%e %w%f' \
-  "$VAULT_PATH" |
+  "${WATCH_PATHS[@]}" |
 while read -r event filepath; do
   relpath="${filepath#$VAULT_PATH/}"
   case "$event" in

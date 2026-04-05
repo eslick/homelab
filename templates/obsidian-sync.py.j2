@@ -5,6 +5,7 @@
 # Syncs Obsidian vault from CouchDB (Self-hosted LiveSync) to the filesystem.
 # Runs as a systemd service (live _changes watcher) with a cron fallback.
 
+import base64
 import json
 import os
 import sys
@@ -57,12 +58,13 @@ def get_all_plain_docs():
 # ---------------------------------------------------------------------------
 
 def fetch_content(plain_doc):
-    """Concatenate leaf chunks in order to reconstruct file content."""
+    """Decode and concatenate leaf chunks to reconstruct file content."""
     parts = []
     for child_id in plain_doc.get("children", []):
         leaf = get_doc(child_id)
-        parts.append(leaf.get("data", ""))
-    return "".join(parts)
+        raw = base64.b64decode(leaf.get("data", ""))
+        parts.append(raw)
+    return b"".join(parts).decode("utf-8", errors="replace")
 
 
 def write_file(path_str, content):
