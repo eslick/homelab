@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Managed by Ansible — do not edit directly
+# See playbooks/obsidian-sync.yml
+#
+# Watches vault filesystem and pushes changes to CouchDB (LiveSync format)
+
+VAULT_PATH="{{ vault_path }}"
+COUCH_URL="http://{{ couchdb_admin_user }}:{{ couchdb_admin_password }}@127.0.0.1:{{ couchdb_port }}"
+DB="{{ couchdb_database }}"
+
+push_file() {
+  local filepath="$1"
+  local relpath="${filepath#$VAULT_PATH/}"
+  # Skip hidden files and CouchDB internals
+  [[ "$relpath" == .* ]] && return
+  [[ "$relpath" == */.* ]] && return
+  [[ ! -f "$filepath" ]] && return
+
+  local content
+  content=$(base64 -w 0 "$filepath")
+  local size
+  size=$(wc -c < "$filepath")
+  local mtime
+  mtime=$(date -r "$filepath" +%s%3N)
+
+  local encoded_id
+  encoded_id=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "$relpath")
+
+  # Get current _rev if doc exists
+  local rev
+  rev=$(curl -sf "$COUCH_URL/$DB/$encoded_id" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('_rev',''))" 2>/dev/null || true)
+
+  local body
+  if [[ -n "$rev" ]]; then
+    body=$(printf '{"_rev":"%s","data":"%s","ctime":%s,"mtime":%s,"size":%s,"type":"plain"}' \
+      "$rev" "$content" "$mtime" "$mtime" "$size")
+  else
+    body=$(printf '{"data":"%s","ctime":%s,"mtime":%s,"size":%s,"type":"plain"}' \
+      "$content" "$mtime" "$mtime" "$size")
+  fi
+
+  curl -sf -X PUT "$COUCH_URL/$DB/$encoded_id" \
+    -H "Content-Type: application/json" \
+    -d "$body" > /dev/null
+
+  echo "$(date -Iseconds) pushed: $relpath"
+}
+
+delete_file() {
+  local relpath="$1"
+  local encoded_id
+  encoded_id=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "$relpath")
+
+  local rev
+  rev=$(curl -sf "$COUCH_URL/$DB/$encoded_id" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('_rev',''))" 2>/dev/null || true)
+  [[ -z "$rev" ]] && return
+
+  curl -sf -X DELETE "$COUCH_URL/$DB/$encoded_id?rev=$rev" > /dev/null
+  echo "$(date -Iseconds) deleted: $relpath"
+}
+
+# Watch for close_write (file finished writing), moves, and deletes
+inotifywait -m -r -e close_write,moved_to,moved_from,delete \
+  --format '%e %w%f' \
+  "$VAULT_PATH" |
+while read -r event filepath; do
+  relpath="${filepath#$VAULT_PATH/}"
+  case "$event" in
+    CLOSE_WRITE,CLOSE|MOVED_TO)
+      push_file "$filepath"
+      ;;
+    MOVED_FROM|DELETE)
+      delete_file "$relpath"
+      ;;
+  esac
+done

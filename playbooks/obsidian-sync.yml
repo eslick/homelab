@@ -75,6 +75,72 @@
       when: not ansible_check_mode
       tags: [service]
 
+    - name: Install inotify-tools
+      ansible.builtin.apt:
+        name: inotify-tools
+        state: present
+        update_cache: no
+      become: yes
+      tags: [install]
+
+    - name: Ensure /opt/obsidian directory exists
+      ansible.builtin.file:
+        path: /opt/obsidian
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [configure]
+
+    - name: Deploy vault writeback script
+      ansible.builtin.template:
+        src: ../templates/vault-writeback.sh.j2
+        dest: /opt/obsidian/vault-writeback.sh
+        mode: '0755'
+      become: yes
+      notify: Restart obsidian-vault-writeback
+      tags: [configure]
+
+    - name: Deploy vault writeback systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/obsidian-vault-writeback.service
+        content: |
+          # Managed by Ansible — do not edit directly
+          # See playbooks/obsidian-sync.yml
+
+          [Unit]
+          Description=Obsidian Vault Write-Back (filesystem → CouchDB)
+          After=obsidian-sync.service
+          Requires=obsidian-sync.service
+
+          [Service]
+          Type=simple
+          ExecStart=/opt/obsidian/vault-writeback.sh
+          Restart=always
+          RestartSec=5
+          StandardOutput=journal
+          StandardError=journal
+          SyslogIdentifier=obsidian-vault-writeback
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      become: yes
+      notify:
+        - Reload systemd
+        - Restart obsidian-vault-writeback
+      tags: [service]
+
+    - name: Enable and start vault writeback service
+      ansible.builtin.systemd:
+        name: obsidian-vault-writeback
+        enabled: yes
+        state: started
+        daemon_reload: yes
+      become: yes
+      when: not ansible_check_mode
+      tags: [service]
+
     - name: Install cron fallback — full sync every 5 minutes
       ansible.builtin.cron:
         name: obsidian-vault-full-sync
@@ -95,6 +161,13 @@
     - name: Restart obsidian-sync
       ansible.builtin.systemd:
         name: obsidian-sync
+        state: restarted
+      become: yes
+      when: not ansible_check_mode
+
+    - name: Restart obsidian-vault-writeback
+      ansible.builtin.systemd:
+        name: obsidian-vault-writeback
         state: restarted
       become: yes
       when: not ansible_check_mode
