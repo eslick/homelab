@@ -99,13 +99,13 @@
 
     # --- Manifest routing (via loopback API inside container) ---
     # All API calls run from inside the container (loopback = trusted, no auth needed).
-    # Script is idempotent: get-or-create each provider, set all tier overrides,
-    # then activate custom providers with their API keys.
+    # Script is idempotent: get-or-create ollama custom provider, register together
+    # and openai as native providers, then set all tier overrides.
     #
     # Providers:
     #   ollama   — custom OpenAI-compat at host.docker.internal:11434
-    #   together — custom OpenAI-compat at api.together.xyz (uses vault_together_api_key)
-    #   openai   — native provider (uses OPENAI_API_KEY from container env)
+    #   together — native provider (Manifest has built-in support; shows in UI)
+    #   openai   — native provider
 
     - name: Configure Manifest routing (providers + tiers)
       community.docker.docker_container_exec:
@@ -120,23 +120,17 @@
           OLLAMA_ID=$(echo $RESP | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\" 2>/dev/null);
           fi;
           [ -z \"$OLLAMA_ID\" ] && echo 'ERROR: could not get ollama provider id' && exit 1;
-          TOGETHER_ID=$(echo $EXISTING | python3 -c \"import json,sys; p=[x for x in json.load(sys.stdin) if x['name']=='together']; print(p[0]['id'] if p else '')\" 2>/dev/null);
-          if [ -z \"$TOGETHER_ID\" ]; then
-          RESP=$(curl -sf -X POST -H 'Content-Type: application/json' -d '{\"name\":\"together\",\"base_url\":\"https://api.together.xyz/v1\",\"models\":[{\"model_name\":\"Qwen/Qwen3.5-397B-A17B\"},{\"model_name\":\"nvidia/Nemotron-3-Nano\"}]}' $BASE/custom-providers) || exit 1;
-          TOGETHER_ID=$(echo $RESP | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\" 2>/dev/null);
-          fi;
-          [ -z \"$TOGETHER_ID\" ] && echo 'ERROR: could not get together provider id' && exit 1;
+          curl -sf -X POST -H 'Content-Type: application/json' -d \"{\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\",\\\"apiKey\\\":\\\"ollama\\\"}\" $BASE/providers > /dev/null;
+          curl -sf -X POST -H 'Content-Type: application/json' -d '{\"provider\":\"together\",\"apiKey\":\"{{ together_api_key }}\"}' $BASE/providers > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/small > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/standard > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"qwen3.5:27b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/local-advanced > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"Qwen/Qwen3.5-397B-A17B\\\",\\\"provider\\\":\\\"custom:$TOGETHER_ID\\\"}\" $BASE/tiers/advanced > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"nvidia/Nemotron-3-Nano\\\",\\\"provider\\\":\\\"custom:$TOGETHER_ID\\\"}\" $BASE/tiers/long-context > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"Qwen/Qwen3.5-397B-A17B\",\"provider\":\"together\"}' $BASE/tiers/advanced > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"nvidia/Nemotron-3-Nano\",\"provider\":\"together\"}' $BASE/tiers/long-context > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"o4-mini\",\"provider\":\"openai\"}' $BASE/tiers/thinking > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/simple > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"qwen3.5:27b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/complex > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"o4-mini\",\"provider\":\"openai\"}' $BASE/tiers/reasoning > /dev/null;
-          curl -sf -X POST -H 'Content-Type: application/json' -d \"{\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\",\\\"apiKey\\\":\\\"ollama\\\"}\" $BASE/providers > /dev/null;
-          curl -sf -X POST -H 'Content-Type: application/json' -d \"{\\\"provider\\\":\\\"custom:$TOGETHER_ID\\\",\\\"apiKey\\\":\\\"{{ together_api_key }}\\\"}\" $BASE/providers > /dev/null;
           echo 'Manifest routing configured'"
       become: yes
       register: manifest_routing_result
