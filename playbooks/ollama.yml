@@ -3,7 +3,7 @@
 # model pulls, UFW rules, and Manifest routing inside the OpenClaw container.
 #
 # Manifest tier → model mapping:
-#   simple   → qwen3.5:8b              (heartbeat / fast)
+#   simple   → qwen3:8b                (heartbeat / fast)
 #   standard → gemma4:26b-a4b-it-q4_K_M (basic / standard)
 #   complex  → qwen3.5:27b             (advanced)
 #   reasoning → o3 via openai          (reasoning — frontier, not local)
@@ -15,7 +15,7 @@
   vars:
     docker_bridge_subnet: 172.18.0.0/16
     ollama_models:
-      - qwen3.5:8b
+      - qwen3:8b
       - gemma4:26b-a4b-it-q4_K_M
       - qwen3.5:27b
     manifest_agent: open-claw
@@ -110,12 +110,12 @@
           PROVIDER_ID=$(echo $EXISTING | python3 -c \"import json,sys; p=[x for x in json.load(sys.stdin) if x['name']=='ollama']; print(p[0]['id'] if p else '')\" 2>/dev/null);
           if [ -z \"$PROVIDER_ID\" ]; then
             RESP=$(curl -sf -X POST -H 'Content-Type: application/json'
-              -d '{\"name\":\"ollama\",\"base_url\":\"http://host.docker.internal:11434/v1\",\"models\":[{\"model_name\":\"qwen3.5:8b\"},{\"model_name\":\"gemma4:26b-a4b-it-q4_K_M\"},{\"model_name\":\"qwen3.5:27b\"}]}'
+              -d '{\"name\":\"ollama\",\"base_url\":\"http://host.docker.internal:11434/v1\",\"models\":[{\"model_name\":\"qwen3:8b\"},{\"model_name\":\"gemma4:26b-a4b-it-q4_K_M\"},{\"model_name\":\"qwen3.5:27b\"}]}'
               $BASE/custom-providers) || exit 1;
             PROVIDER_ID=$(echo $RESP | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\" 2>/dev/null);
           fi;
           [ -z \"$PROVIDER_ID\" ] && echo 'ERROR: could not get provider id' && exit 1;
-          for TIER_MODEL in 'simple|qwen3.5:8b' 'standard|gemma4:26b-a4b-it-q4_K_M' 'complex|qwen3.5:27b'; do
+          for TIER_MODEL in 'simple|qwen3:8b' 'standard|gemma4:26b-a4b-it-q4_K_M' 'complex|qwen3.5:27b'; do
             TIER=$(echo $TIER_MODEL | cut -d'|' -f1);
             MODEL=$(echo $TIER_MODEL | cut -d'|' -f2);
             curl -sf -X PUT -H 'Content-Type: application/json'
