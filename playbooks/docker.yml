@@ -24,8 +24,10 @@
       - name: datomic
         ports: [4334]
 
-    # Obsidian vault
+    # Obsidian vault (synced via Syncthing — no secrets here)
     vault_path: /opt/vaults/obsidian
+    # Secrets store (not synced — credentials, tokens)
+    secrets_path: /opt/secrets
     tailscale_hostname: speedracer.terrier-haddock.ts.net
 
     # OpenClaw
@@ -177,13 +179,30 @@
       become: yes
       tags: [openclaw, configure]
 
-    - name: Create Google OAuth credentials directory
+    - name: Create secrets directory
       ansible.builtin.file:
-        path: "{{ vault_path }}/google"
+        path: "{{ secrets_path }}"
         state: directory
         mode: '0700'
         owner: eslick
         group: eslick
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Create Google OAuth credentials directory under secrets
+      ansible.builtin.file:
+        path: "{{ secrets_path }}/google"
+        state: directory
+        mode: '0700'
+        owner: eslick
+        group: eslick
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Remove Google OAuth credentials from Obsidian vault (was synced via Syncthing)
+      ansible.builtin.file:
+        path: "{{ vault_path }}/google"
+        state: absent
       become: yes
       tags: [openclaw, configure]
 
@@ -286,7 +305,7 @@
           - mcp
           - set
           - google-workspace-vr
-          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-vr.json"}}'
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/secrets/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/secrets/google/token-vr.json"}}'
       become: yes
       register: openclaw_mcp_vr_result
       changed_when: "'Updated' in openclaw_mcp_vr_result.stdout"
@@ -302,7 +321,7 @@
           - mcp
           - set
           - google-workspace-gmail
-          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-gmail.json"}}'
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/secrets/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/secrets/google/token-gmail.json"}}'
       become: yes
       register: openclaw_mcp_gmail_result
       changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"

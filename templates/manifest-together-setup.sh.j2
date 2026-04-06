@@ -109,14 +109,14 @@ done
 # Manifest's model-discovery service sets cached_models=[] for custom providers
 # (no fetcher config), causing tier overrides to fall through to auto.
 # We seed them here directly so the routing is correct immediately after restart.
-TGI_ID=$(sqlite3 "$DB" \
-  "SELECT id FROM custom_providers WHERE agent_id='$AGENT_ID' AND name='tgi' LIMIT 1;")
+VLLM_ID=$(sqlite3 "$DB" \
+  "SELECT id FROM custom_providers WHERE agent_id='$AGENT_ID' AND name='vllm' LIMIT 1;")
 
-if [ -n "$TGI_ID" ]; then
-  TGI_MODELS='[{"id":"google/gemma-4-26B-A4B-it"}]'
-  sqlite3 "$DB" "UPDATE user_providers SET cached_models='$TGI_MODELS', models_fetched_at=datetime('now') WHERE agent_id='$AGENT_ID' AND provider='custom:$TGI_ID';"
-  sqlite3 "$DB" "UPDATE custom_providers SET models='[{\"model_name\":\"google/gemma-4-26B-A4B-it\",\"context_window\":49152}]' WHERE agent_id='$AGENT_ID' AND name='tgi';"
-  echo "Seeded cached_models for tgi provider ($TGI_ID)"
+if [ -n "$VLLM_ID" ]; then
+  VLLM_MODELS='[{"id":"cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"}]'
+  sqlite3 "$DB" "UPDATE user_providers SET cached_models='$VLLM_MODELS', models_fetched_at=datetime('now') WHERE agent_id='$AGENT_ID' AND provider='custom:$VLLM_ID';"
+  sqlite3 "$DB" "UPDATE custom_providers SET models='[{\"model_name\":\"cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit\",\"context_window\":32768}]' WHERE agent_id='$AGENT_ID' AND name='vllm';"
+  echo "Seeded cached_models for vllm provider ($VLLM_ID)"
 fi
 
 TOGETHER_CACHED='[{"id":"deepseek-ai/DeepSeek-V3.1"},{"id":"moonshotai/Kimi-K2.5"},{"id":"openai/gpt-oss-120b"}]'
