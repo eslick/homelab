@@ -406,16 +406,16 @@
         mode: '0700'
       tags: [openclaw, configure, manifest]
 
-    - name: Copy vLLM setup script into openclaw-gateway container
+    - name: Copy vLLM setup script into openclaw-gateway persistent volume
       ansible.builtin.command:
-        cmd: docker cp /tmp/manifest-vllm-setup.sh openclaw-gateway:/tmp/manifest-vllm-setup.sh
+        cmd: docker cp /tmp/manifest-vllm-setup.sh openclaw-gateway:/home/node/.openclaw/manifest-setup.sh
       become: yes
       changed_when: false
       tags: [openclaw, configure, manifest]
 
     - name: Register vLLM custom provider and configure tier routing
       ansible.builtin.command:
-        cmd: docker exec openclaw-gateway sh /tmp/manifest-vllm-setup.sh
+        cmd: docker exec openclaw-gateway sh /home/node/.openclaw/manifest-setup.sh
       become: yes
       register: manifest_vllm_result
       changed_when: "'Created' in manifest_vllm_result.stdout"

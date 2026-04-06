@@ -37,6 +37,12 @@ if [ -f "${MANIFEST_PLUGIN}" ]; then
   " &
   # Give manifest ~5s to bind before socat and gateway start
   sleep 5
+
+  # Re-seed Manifest provider/tier config (cached_models cleared on every restart by discovery service)
+  MANIFEST_SETUP="${HOME}/.openclaw/manifest-setup.sh"
+  if [ -f "${MANIFEST_SETUP}" ]; then
+    sh "${MANIFEST_SETUP}" 2>&1 | sed 's/^/[entrypoint] manifest-setup: /' || true
+  fi
 fi
 
 # Start socat relay: container port 2100 → manifest on 127.0.0.1:2099
