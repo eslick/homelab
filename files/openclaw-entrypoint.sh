@@ -33,6 +33,22 @@ if [ -f "${PROVIDER_CLIENT}" ] && grep -q "PROVIDER_TIMEOUT_MS = 180_000" "${PRO
   echo "[entrypoint] Patched manifest PROVIDER_TIMEOUT_MS 180s -> 300s"
 fi
 
+# Patch manifest plugin: cap max_tokens to 2048 for custom (vLLM) providers.
+# vLLM has a 32k context limit; with large prompts (28k+) a 4096 max_tokens
+# request overflows. Cap it so prompt + output can never exceed the limit.
+if [ -f "${PROVIDER_CLIENT}" ] && ! grep -q "VLLM_MAX_OUTPUT_TOKENS" "${PROVIDER_CLIENT}"; then
+  node -e "
+    const fs = require('fs');
+    let src = fs.readFileSync('${PROVIDER_CLIENT}', 'utf8');
+    const old = \"requestBody = { ...sanitized, model: bareModel, stream };\";
+    const fix = \"requestBody = { ...sanitized, model: bareModel, stream };\\n            if (endpointKey === 'custom' && requestBody.max_tokens > 2048) { /* VLLM_MAX_OUTPUT_TOKENS */ requestBody.max_tokens = 2048; }\"
+    if (src.includes(old)) {
+      fs.writeFileSync('${PROVIDER_CLIENT}', src.replace(old, fix));
+      process.stdout.write('[entrypoint] Patched manifest custom provider max_tokens cap (2048)\\n');
+    }
+  " 2>/dev/null || true
+fi
+
 # Start manifest server on port 2099 if the plugin is installed
 if [ -f "${MANIFEST_PLUGIN}" ]; then
   node -e "
