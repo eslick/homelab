@@ -15,6 +15,7 @@ services:
       OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1"
     volumes:
       - openclaw-data:/home/node/.openclaw
+      - /opt/cache/openclaw:/home/node/.cache:rw
       - {{ vault_path }}:/vault:rw
       - {{ secrets_path }}:/secrets:rw
     extra_hosts:

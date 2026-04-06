@@ -219,6 +219,16 @@
       become: yes
       tags: [openclaw, configure]
 
+    - name: Create OpenClaw model cache directory on host
+      ansible.builtin.file:
+        path: /opt/cache/openclaw
+        state: directory
+        owner: eslick
+        group: eslick
+        mode: '0755'
+      become: yes
+      tags: [openclaw, configure]
+
     - name: Build OpenClaw image
       ansible.builtin.command:
         cmd: docker compose -f {{ compose_base }}/openclaw/docker-compose.yml build

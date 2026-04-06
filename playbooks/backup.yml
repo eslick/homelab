@@ -12,6 +12,7 @@
       - /etc
       - /opt/compose
       - /opt/vaults
+      - /opt/cache
       - /var/lib/docker/volumes
 
   tasks:
