@@ -1,0 +1,156 @@
+---
+# Deploys vLLM for local Gemma-4 inference with GPU access.
+# Stops and disables Ollama — vLLM becomes the sole local inference backend.
+#
+# Manifest tier → model mapping (after this playbook):
+#   simple         → vLLM / cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  (AWQ-Marlin, prefix-cached)
+#   standard       → vLLM / cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  (AWQ-Marlin, prefix-cached)
+#   small          → vLLM / cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  (AWQ-Marlin, prefix-cached)
+#   local-advanced → vLLM / cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  (AWQ-Marlin, prefix-cached)
+#   advanced       → together / Qwen3.5-397B-A17B                  (frontier MoE)
+#   complex        → together / deepseek-ai/DeepSeek-V3.1          (frontier)
+#   reasoning      → together / moonshotai/Kimi-K2.5               (reasoning)
+#   thinking       → openai / o4-mini                              (reasoning)
+#
+# VRAM budget (RTX 3090, 24 GB):
+#   AWQ-4bit weights ~13 GB, gpu-memory-utilization capped at 0.85 (20.4 GB usable).
+#   vLLM auto-fits KV cache into remaining ~7 GB. max-model-len=32768 limits context.
+#   DO NOT raise gpu-memory-utilization above 0.90 without checking nvidia-smi headroom.
+
+- name: Deploy vLLM GPU container and retire Ollama
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    docker_network: homelab-net
+    docker_bridge_subnet: 172.18.0.0/16
+
+    vllm_port: 8081
+    vllm_model_id: "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
+    vllm_served_model_name: "gemma-4"
+    vllm_max_model_len: 32768          # 32k context; KV cache auto-sized within VRAM budget
+    vllm_gpu_memory_fraction: "0.90"   # cap at 90% of 24 GB = 21.6 GB; headroom for CUDA graphs
+
+  tasks:
+
+    # --- Stop Ollama ---
+
+    - name: Stop and disable Ollama systemd service
+      ansible.builtin.systemd:
+        name: ollama
+        state: stopped
+        enabled: false
+      become: yes
+      tags: [disable, ollama]
+
+    # --- Tear down TGI if present ---
+
+    - name: Check if TGI compose exists
+      ansible.builtin.stat:
+        path: "{{ compose_base }}/tgi/docker-compose.yml"
+      register: tgi_compose
+      tags: [docker, vllm]
+
+    - name: Stop TGI container if running
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/tgi"
+        state: absent
+      become: yes
+      when: tgi_compose.stat.exists
+      failed_when: false
+      tags: [docker, vllm]
+
+    # --- vLLM compose deployment ---
+
+    - name: Create vLLM compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/vllm"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [install, vllm]
+
+    - name: Deploy vLLM compose file from template
+      ansible.builtin.template:
+        src: ../templates/vllm-compose.yml.j2
+        dest: "{{ compose_base }}/vllm/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [configure, vllm]
+
+    - name: Deploy vLLM Dockerfile (adds gemma4 transformers support)
+      ansible.builtin.template:
+        src: ../templates/vllm-Dockerfile.j2
+        dest: "{{ compose_base }}/vllm/Dockerfile"
+        mode: '0644'
+      become: yes
+      tags: [configure, vllm]
+
+    - name: Build vLLM image with updated transformers
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/vllm/docker-compose.yml build
+      become: yes
+      register: vllm_build_result
+      changed_when: "'writing image' in vllm_build_result.stdout"
+      tags: [docker, vllm]
+
+    - name: Start vLLM container
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/vllm"
+        state: present
+      become: yes
+      tags: [docker, vllm]
+
+    # --- UFW rules for vLLM port ---
+
+    - name: Allow vLLM port from localhost
+      community.general.ufw:
+        rule: allow
+        port: "{{ vllm_port }}"
+        proto: tcp
+        from_ip: 127.0.0.1
+      become: yes
+      tags: [security, vllm]
+
+    - name: Allow vLLM port from Docker bridge subnet
+      community.general.ufw:
+        rule: allow
+        port: "{{ vllm_port }}"
+        proto: tcp
+        from_ip: "{{ docker_bridge_subnet }}"
+      become: yes
+      tags: [security, vllm]
+
+    - name: Deny vLLM port from everywhere else
+      community.general.ufw:
+        rule: deny
+        port: "{{ vllm_port }}"
+        proto: tcp
+      become: yes
+      tags: [security, vllm]
+
+    # --- Manifest routing (vLLM provider + tier assignments) ---
+    # Runs inside openclaw-gateway where Manifest DB is accessible.
+
+    - name: Render vLLM Manifest setup script
+      ansible.builtin.template:
+        src: ../templates/manifest-vllm-setup.sh.j2
+        dest: /tmp/manifest-vllm-setup.sh
+        mode: '0700'
+      tags: [manifest, vllm, configure]
+
+    - name: Copy vLLM Manifest setup script into openclaw-gateway
+      ansible.builtin.command:
+        cmd: docker cp /tmp/manifest-vllm-setup.sh openclaw-gateway:/tmp/manifest-vllm-setup.sh
+      become: yes
+      changed_when: false
+      tags: [manifest, vllm, configure]
+
+    - name: Run vLLM Manifest setup in openclaw-gateway
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway sh /tmp/manifest-vllm-setup.sh
+      become: yes
+      register: manifest_vllm_result
+      changed_when: "'Created' in manifest_vllm_result.stdout"
+      tags: [manifest, vllm, configure]

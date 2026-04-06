@@ -113,9 +113,9 @@ VLLM_ID=$(sqlite3 "$DB" \
   "SELECT id FROM custom_providers WHERE agent_id='$AGENT_ID' AND name='vllm' LIMIT 1;")
 
 if [ -n "$VLLM_ID" ]; then
-  VLLM_MODELS='[{"id":"cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"}]'
+  VLLM_MODELS='[{"id":"gemma-4"}]'
   sqlite3 "$DB" "UPDATE user_providers SET cached_models='$VLLM_MODELS', models_fetched_at=datetime('now') WHERE agent_id='$AGENT_ID' AND provider='custom:$VLLM_ID';"
-  sqlite3 "$DB" "UPDATE custom_providers SET models='[{\"model_name\":\"cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit\",\"context_window\":32768}]' WHERE agent_id='$AGENT_ID' AND name='vllm';"
+  sqlite3 "$DB" "UPDATE custom_providers SET models='[{\"model_name\":\"gemma-4\",\"context_window\":32768}]' WHERE agent_id='$AGENT_ID' AND name='vllm';"
   echo "Seeded cached_models for vllm provider ($VLLM_ID)"
 fi
 

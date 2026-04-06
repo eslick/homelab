@@ -38,6 +38,11 @@
     openai_api_key: "{{ vault_openai_api_key | default('') }}"
     together_api_key: "{{ together_ai_api_key | default('') }}"
 
+    # vLLM (model router backend)
+    vllm_model_id: "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
+    vllm_served_model_name: "gemma-4"
+    vllm_max_model_len: 32768
+
     # CockroachDB
     cockroachdb_sql_port: 26257
     cockroachdb_ui_port: 8090
@@ -367,10 +372,10 @@
       failed_when: false
       tags: [openclaw, configure]
 
-    - name: Set compaction threshold to 24k (trigger before 32k num_ctx is hit)
+    - name: Set compaction threshold to 85% of 32k context (27852 tokens)
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.contextTokens 24576 --strict-json
+        command: node dist/index.js config set agents.defaults.contextTokens 27852 --strict-json
       become: yes
       register: openclaw_context_tokens_result
       changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
@@ -394,24 +399,24 @@
       changed_when: "'Updated' in openclaw_llm_timeout_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Render Together AI manifest setup script to host
+    - name: Render vLLM manifest setup script to host
       ansible.builtin.template:
-        src: ../templates/manifest-together-setup.sh.j2
-        dest: /tmp/manifest-together-setup.sh
+        src: ../templates/manifest-vllm-setup.sh.j2
+        dest: /tmp/manifest-vllm-setup.sh
         mode: '0700'
       tags: [openclaw, configure, manifest]
 
-    - name: Copy Together AI setup script into openclaw-gateway container
+    - name: Copy vLLM setup script into openclaw-gateway container
       ansible.builtin.command:
-        cmd: docker cp /tmp/manifest-together-setup.sh openclaw-gateway:/tmp/manifest-together-setup.sh
+        cmd: docker cp /tmp/manifest-vllm-setup.sh openclaw-gateway:/tmp/manifest-vllm-setup.sh
       become: yes
       changed_when: false
       tags: [openclaw, configure, manifest]
 
-    - name: Register Together AI custom provider and configure tier routing
+    - name: Register vLLM custom provider and configure tier routing
       ansible.builtin.command:
-        cmd: docker exec openclaw-gateway sh /tmp/manifest-together-setup.sh
+        cmd: docker exec openclaw-gateway sh /tmp/manifest-vllm-setup.sh
       become: yes
-      register: manifest_together_result
-      changed_when: "'Created' in manifest_together_result.stdout"
+      register: manifest_vllm_result
+      changed_when: "'Created' in manifest_vllm_result.stdout"
       tags: [openclaw, configure, manifest]
