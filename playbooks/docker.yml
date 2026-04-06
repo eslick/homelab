@@ -17,8 +17,6 @@
     services:
       - name: openclaw
         ports: [18789, 2099]
-      - name: obsidian-couchdb
-        ports: [5984]
       - name: cockroachdb
         ports: [26257, 8090]
       - name: minio
@@ -26,12 +24,10 @@
       - name: datomic
         ports: [4334]
 
-    # Obsidian vault
+    # Obsidian vault (synced via Syncthing — no secrets here)
     vault_path: /opt/vaults/obsidian
-    couchdb_port: 5984
-    couchdb_admin_user: "{{ vault_couchdb_admin_user }}"
-    couchdb_admin_password: "{{ vault_couchdb_admin_password }}"
-    couchdb_database: obsidian
+    # Secrets store (not synced — credentials, tokens)
+    secrets_path: /opt/secrets
     tailscale_hostname: speedracer.terrier-haddock.ts.net
 
     # OpenClaw
@@ -41,6 +37,11 @@
     anthropic_api_key: "{{ vault_anthropic_api_key }}"
     openai_api_key: "{{ vault_openai_api_key | default('') }}"
     together_api_key: "{{ together_ai_api_key | default('') }}"
+
+    # vLLM (model router backend)
+    vllm_model_id: "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
+    vllm_served_model_name: "gemma-4"
+    vllm_max_model_len: 32768
 
     # CockroachDB
     cockroachdb_sql_port: 26257
@@ -91,77 +92,6 @@
       loop: "{{ services | subelements('ports') }}"
       become: yes
       tags: [docker, security]
-
-    # --- Obsidian vault directory ---
-
-    - name: Create Obsidian vault directory
-      ansible.builtin.file:
-        path: "{{ vault_path }}"
-        state: directory
-        mode: '0755'
-        owner: eslick
-        group: eslick
-      become: yes
-      tags: [obsidian, configure]
-
-    # --- CouchDB for Obsidian LiveSync ---
-
-    - name: Ensure obsidian-couchdb compose directory exists
-      ansible.builtin.file:
-        path: "{{ compose_base }}/obsidian-couchdb"
-        state: directory
-        mode: '0755'
-      become: yes
-      tags: [obsidian, configure]
-
-    - name: Deploy obsidian-couchdb compose file
-      ansible.builtin.template:
-        src: ../templates/obsidian-couchdb-compose.yml.j2
-        dest: "{{ compose_base }}/obsidian-couchdb/docker-compose.yml"
-        mode: '0644'
-      become: yes
-      tags: [obsidian, configure]
-
-    - name: Deploy CouchDB local.ini config
-      ansible.builtin.template:
-        src: ../templates/obsidian-couchdb-local.ini.j2
-        dest: "{{ compose_base }}/obsidian-couchdb/obsidian.ini"
-        mode: '0644'
-      become: yes
-      tags: [obsidian, configure]
-
-    - name: Start Obsidian CouchDB
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/obsidian-couchdb"
-        state: present
-      become: yes
-      tags: [obsidian, service]
-
-    - name: Wait for CouchDB to be ready
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ couchdb_port }}/_up"
-        method: GET
-        user: "{{ couchdb_admin_user }}"
-        password: "{{ couchdb_admin_password }}"
-        force_basic_auth: yes
-        status_code: 200
-      register: couchdb_ready
-      until: couchdb_ready.status == 200
-      retries: 15
-      delay: 3
-      tags: [obsidian, configure]
-
-    - name: Create Obsidian LiveSync database in CouchDB
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ couchdb_port }}/{{ couchdb_database }}"
-        method: PUT
-        user: "{{ couchdb_admin_user }}"
-        password: "{{ couchdb_admin_password }}"
-        force_basic_auth: yes
-        status_code: [201, 412]
-      register: couchdb_create
-      changed_when: couchdb_create.status == 201
-      tags: [obsidian, configure]
 
     # --- CockroachDB (must start first, Datomic depends on it) ---
 
@@ -254,13 +184,30 @@
       become: yes
       tags: [openclaw, configure]
 
-    - name: Create Google OAuth credentials directory
+    - name: Create secrets directory
       ansible.builtin.file:
-        path: "{{ vault_path }}/google"
+        path: "{{ secrets_path }}"
         state: directory
         mode: '0700'
         owner: eslick
         group: eslick
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Create Google OAuth credentials directory under secrets
+      ansible.builtin.file:
+        path: "{{ secrets_path }}/google"
+        state: directory
+        mode: '0700'
+        owner: eslick
+        group: eslick
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Remove Google OAuth credentials from Obsidian vault (was synced via Syncthing)
+      ansible.builtin.file:
+        path: "{{ vault_path }}/google"
+        state: absent
       become: yes
       tags: [openclaw, configure]
 
@@ -363,7 +310,7 @@
           - mcp
           - set
           - google-workspace-vr
-          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-vr.json"}}'
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/secrets/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/secrets/google/token-vr.json"}}'
       become: yes
       register: openclaw_mcp_vr_result
       changed_when: "'Updated' in openclaw_mcp_vr_result.stdout"
@@ -379,7 +326,7 @@
           - mcp
           - set
           - google-workspace-gmail
-          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/vault/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/vault/google/token-gmail.json"}}'
+          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/secrets/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/secrets/google/token-gmail.json"}}'
       become: yes
       register: openclaw_mcp_gmail_result
       changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
@@ -400,7 +347,7 @@
         container: openclaw-gateway
         command: >
           node dist/index.js config set models.providers.manifest
-          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto"}]}'
+          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto","contextWindow":32768,"maxTokens":4096}]}'
       become: yes
       register: openclaw_manifest_provider_result
       changed_when: "'Updated' in openclaw_manifest_provider_result.stdout"
@@ -414,3 +361,111 @@
       register: openclaw_default_model_result
       changed_when: "'manifest/auto' in openclaw_default_model_result.stdout"
       tags: [openclaw, configure]
+
+    - name: Remove anthropic/claude-sonnet-4-6 from default models (use manifest/auto only)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config unset agents.defaults.models.anthropic/claude-sonnet-4-6
+      become: yes
+      register: openclaw_remove_sonnet_result
+      changed_when: "'Removed' in openclaw_remove_sonnet_result.stdout"
+      failed_when: false
+      tags: [openclaw, configure]
+
+    - name: Set compaction threshold (24000 = 28672 hard limit minus ~4500 response headroom)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.contextTokens 24000 --strict-json
+      become: yes
+      register: openclaw_context_tokens_result
+      changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Reserve tokens for system prompt (10240 covers max observed 8651 + buffer)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.reserveTokens 10240 --strict-json
+      become: yes
+      register: openclaw_reserve_tokens_result
+      changed_when: "'Updated' in openclaw_reserve_tokens_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Keep last 2048 tokens verbatim after compaction
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.keepRecentTokens 2048 --strict-json
+      become: yes
+      register: openclaw_keep_recent_result
+      changed_when: "'Updated' in openclaw_keep_recent_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Preserve last 2 turns intact through compaction
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.recentTurnsPreserve 2 --strict-json
+      become: yes
+      register: openclaw_recent_turns_result
+      changed_when: "'Updated' in openclaw_recent_turns_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Set compaction model to Kimi-K2.5 via Together AI custom provider
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.model custom:2a30b0c0-132f-492d-a914-3bb275990ebc/moonshotai/Kimi-K2.5
+      become: yes
+      register: openclaw_compaction_model_result
+      changed_when: "'Updated' in openclaw_compaction_model_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Set LLM idle timeout to 300s (local inference prefill can be slow)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.llm.idleTimeoutSeconds 300 --strict-json
+      become: yes
+      register: openclaw_llm_timeout_result
+      changed_when: "'Updated' in openclaw_llm_timeout_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Render vLLM manifest setup script to host
+      ansible.builtin.template:
+        src: ../templates/manifest-vllm-setup.sh.j2
+        dest: /tmp/manifest-vllm-setup.sh
+        mode: '0700'
+      tags: [openclaw, configure, manifest]
+
+    - name: Copy vLLM setup script into openclaw-gateway persistent volume
+      ansible.builtin.command:
+        cmd: docker cp /tmp/manifest-vllm-setup.sh openclaw-gateway:/home/node/.openclaw/manifest-setup.sh
+      become: yes
+      changed_when: false
+      tags: [openclaw, configure, manifest]
+
+    - name: Register vLLM custom provider and configure tier routing
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway sh /home/node/.openclaw/manifest-setup.sh
+      become: yes
+      register: manifest_vllm_result
+      changed_when: "'Created' in manifest_vllm_result.stdout"
+      tags: [openclaw, configure, manifest]
+
+    - name: Render Together AI manifest setup script to host
+      ansible.builtin.template:
+        src: ../templates/manifest-together-setup.sh.j2
+        dest: /tmp/manifest-together-setup.sh
+        mode: '0700'
+      tags: [openclaw, configure, manifest]
+
+    - name: Copy Together AI setup script into openclaw-gateway persistent volume
+      ansible.builtin.command:
+        cmd: docker cp /tmp/manifest-together-setup.sh openclaw-gateway:/home/node/.openclaw/manifest-together-setup.sh
+      become: yes
+      changed_when: false
+      tags: [openclaw, configure, manifest]
+
+    - name: Register Together AI provider and configure complex/reasoning tier routing
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway sh /home/node/.openclaw/manifest-together-setup.sh
+      become: yes
+      register: manifest_together_result
+      changed_when: "'Created' in manifest_together_result.stdout"
+      tags: [openclaw, configure, manifest]

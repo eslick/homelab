@@ -1,0 +1,102 @@
+---
+# Installs and configures Syncthing to sync the Obsidian vault
+# between speedracer and the MacBook over Tailscale.
+#
+# After running this playbook:
+#   1. Get Linux device ID:  syncthing --device-id (or see web UI)
+#   2. On Mac: brew install syncthing && brew services start syncthing
+#   3. Open Mac Syncthing UI at http://127.0.0.1:8384
+#   4. Add remote device using Linux device ID
+#   5. Share the vault folder to the Linux device
+#   6. On Linux web UI (http://127.0.0.1:8384 via SSH tunnel): accept folder
+#
+# SSH tunnel to Linux web UI:
+#   ssh -L 8385:127.0.0.1:8384 speedracer.terrier-haddock.ts.net
+#   then open http://127.0.0.1:8385
+#
+# Usage:
+#   ansible-playbook playbooks/syncthing.yml --check --diff
+#   ansible-playbook playbooks/syncthing.yml
+
+- name: Install and configure Syncthing
+  hosts: homelab
+  gather_facts: yes
+
+  vars:
+    vault_path: /opt/vaults/obsidian
+    syncthing_user: eslick
+    syncthing_config_dir: /home/eslick/.local/share/syncthing
+
+  tasks:
+
+    - name: Add Syncthing apt signing key
+      ansible.builtin.get_url:
+        url: https://syncthing.net/release-key.gpg
+        dest: /usr/share/keyrings/syncthing-archive-keyring.gpg
+        mode: '0644'
+      become: yes
+      tags: [install]
+
+    - name: Add Syncthing apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/syncthing-archive-keyring.gpg] https://apt.syncthing.net/ syncthing stable"
+        state: present
+        filename: syncthing
+      become: yes
+      tags: [install]
+
+    - name: Install syncthing
+      ansible.builtin.apt:
+        name: syncthing
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install]
+
+    - name: Ensure vault directory is owned by syncthing user
+      ansible.builtin.file:
+        path: "{{ vault_path }}"
+        state: directory
+        owner: "{{ syncthing_user }}"
+        group: "{{ syncthing_user }}"
+        mode: '0755'
+        recurse: yes
+      become: yes
+      tags: [configure]
+
+    - name: Enable and start syncthing service for user
+      ansible.builtin.systemd:
+        name: "syncthing@{{ syncthing_user }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+      become: yes
+      when: not ansible_check_mode
+      tags: [service]
+
+    - name: Allow Syncthing sync port through UFW (Tailscale interface only)
+      ansible.builtin.ufw:
+        rule: allow
+        port: "22000"
+        proto: any
+        interface: tailscale0
+        direction: in
+      become: yes
+      tags: [security]
+
+    - name: Print device ID and next steps
+      ansible.builtin.command: syncthing --device-id
+      register: device_id
+      changed_when: false
+      become: yes
+      become_user: "{{ syncthing_user }}"
+      tags: [configure]
+
+    - name: Show device ID
+      ansible.builtin.debug:
+        msg: |
+          Syncthing is running.
+          Linux device ID: {{ device_id.stdout }}
+          Web UI (via SSH tunnel): ssh -L 8385:127.0.0.1:8384 speedracer.terrier-haddock.ts.net
+          Then open: http://127.0.0.1:8385
+      tags: [configure]

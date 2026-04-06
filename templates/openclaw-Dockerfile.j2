@@ -2,7 +2,19 @@ FROM ghcr.io/openclaw/openclaw:{{ openclaw_version | default('latest') }}
 USER root
 RUN npm install -g mcp-google @tobilu/qmd && \
     apt-get update && apt-get install -y --no-install-recommends sqlite3 socat && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    # Patch mcp-google: remove top-level allOf from update-event inputSchema.
+    # Anthropic's API rejects oneOf/allOf/anyOf at the top level of inputSchema.
+    # The conditional required fields (originalStartTime, futureStartDate) are
+    # documented in the tool description; removing allOf makes them optional.
+    node -e " \
+      const fs = require('fs'); \
+      const f = '/usr/local/lib/node_modules/mcp-google/build/index.js'; \
+      let s = fs.readFileSync(f, 'utf8'); \
+      s = s.replace(/,\s*\/\/ timeZone is technically required for PATCH\s*allOf:\s*\[[\s\S]*?\]\s*(?=\})/, ''); \
+      fs.writeFileSync(f, s); \
+      console.log('mcp-google patch applied'); \
+    "
 COPY openclaw-entrypoint.sh /usr/local/bin/openclaw-entrypoint.sh
 RUN chmod +x /usr/local/bin/openclaw-entrypoint.sh
 USER node

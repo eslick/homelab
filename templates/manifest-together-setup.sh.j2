@@ -1,0 +1,123 @@
+#!/bin/sh
+# Idempotent: register Together AI as a manifest custom provider, add Anthropic,
+# and configure tier routing + fallbacks.
+#
+# Tiers managed here (complex/reasoning only — simple/standard/small/local-advanced
+# are owned by manifest-setup.sh / vLLM and must not be overwritten here):
+#   complex   → moonshotai/Kimi-K2.5 @ Together AI  fallback: anthropic/claude-sonnet-4-6
+#   reasoning → moonshotai/Kimi-K2.5 @ Together AI  fallback: anthropic/claude-sonnet-4-6
+set -e
+
+DB=/home/node/.openclaw/manifest/manifest.db
+AGENT_ID=1c4b61d6-242a-4acc-9c5e-9d7605aef10d
+MANIFEST_KEY={{ manifest_api_key }}
+TOGETHER_KEY={{ together_ai_api_key }}
+ANTHROPIC_KEY={{ vault_anthropic_api_key }}
+BASE_URL=https://api.together.xyz/v1
+
+MODELS='[{"model_name":"deepseek-ai/DeepSeek-V3.1","context_window":65536},{"model_name":"moonshotai/Kimi-K2.5","context_window":65536},{"model_name":"openai/gpt-oss-120b","context_window":65536}]'
+
+# --- Together AI custom provider ---
+EXISTING_ID=$(sqlite3 "$DB" \
+  "SELECT id FROM custom_providers WHERE agent_id='$AGENT_ID' AND name='together' LIMIT 1;")
+
+if [ -z "$EXISTING_ID" ]; then
+  PAYLOAD=$(printf '{"name":"together","base_url":"%s","apiKey":"%s","models":%s}' \
+    "$BASE_URL" "$TOGETHER_KEY" "$MODELS")
+  RESULT=$(wget -qO- \
+    --post-data "$PAYLOAD" \
+    --header "Content-Type: application/json" \
+    --header "Authorization: Bearer $MANIFEST_KEY" \
+    "http://127.0.0.1:2099/api/v1/routing/open-claw/custom-providers")
+  PROVIDER_ID=$(echo "$RESULT" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).id))")
+  echo "Created Together AI custom provider: $PROVIDER_ID"
+else
+  PROVIDER_ID="$EXISTING_ID"
+  wget -qO- \
+    --method=PUT \
+    --body-data "{\"models\":$MODELS}" \
+    --header "Content-Type: application/json" \
+    --header "Authorization: Bearer $MANIFEST_KEY" \
+    "http://127.0.0.1:2099/api/v1/routing/open-claw/custom-providers/$PROVIDER_ID" > /dev/null
+  echo "Together AI custom provider exists: $PROVIDER_ID (models synced)"
+fi
+
+# --- Always re-register Together AI API key (handles key rotation) ---
+# DELETE existing user_providers entry so POST below always writes the current key.
+sqlite3 "$DB" "DELETE FROM user_providers WHERE agent_id='$AGENT_ID' AND provider='custom:$PROVIDER_ID';"
+wget -qO- \
+  --post-data "{\"provider\":\"custom:$PROVIDER_ID\",\"apiKey\":\"$TOGETHER_KEY\"}" \
+  --header "Content-Type: application/json" \
+  --header "Authorization: Bearer $MANIFEST_KEY" \
+  "http://127.0.0.1:2099/api/v1/routing/open-claw/providers" > /dev/null
+echo "Registered Together AI API key (key_prefix=$(echo $TOGETHER_KEY | cut -c1-8))"
+
+# --- Anthropic native provider ---
+ANTHROPIC_EXISTS=$(sqlite3 "$DB" \
+  "SELECT id FROM user_providers WHERE agent_id='$AGENT_ID' AND provider='anthropic' AND is_active=1 LIMIT 1;")
+
+if [ -z "$ANTHROPIC_EXISTS" ]; then
+  wget -qO- \
+    --post-data "{\"provider\":\"anthropic\",\"apiKey\":\"$ANTHROPIC_KEY\",\"authType\":\"api_key\"}" \
+    --header "Content-Type: application/json" \
+    --header "Authorization: Bearer $MANIFEST_KEY" \
+    "http://127.0.0.1:2099/api/v1/routing/open-claw/providers" > /dev/null
+  echo "Added Anthropic provider"
+else
+  echo "Anthropic provider already configured"
+fi
+
+# --- Tier assignments via REST API (bypasses routing cache correctly) ---
+CP="custom:${PROVIDER_ID}"
+BASE_API=http://127.0.0.1:2099/api/v1/routing/open-claw/tiers
+AUTH="Authorization: Bearer $MANIFEST_KEY"
+
+set_tier() {
+  TIER=$1; MODEL=$2; PROVIDER=$3; FALLBACKS=$4
+  wget -qO- --method=PUT \
+    --body-data "{\"model\":\"$MODEL\",\"provider\":\"$PROVIDER\"}" \
+    --header "Content-Type: application/json" \
+    --header "$AUTH" \
+    "$BASE_API/$TIER" > /dev/null 2>&1 || { echo "FAILED override: $TIER"; return; }
+  wget -qO- --method=PUT \
+    --body-data "{\"models\":$FALLBACKS}" \
+    --header "Content-Type: application/json" \
+    --header "$AUTH" \
+    "$BASE_API/$TIER/fallbacks" > /dev/null 2>&1 || { echo "FAILED fallbacks: $TIER"; return; }
+  echo "Set $TIER → $MODEL (fallbacks: $FALLBACKS)"
+}
+
+clear_tier() {
+  TIER=$1
+  wget -qO- --method=DELETE \
+    --header "$AUTH" \
+    "$BASE_API/$TIER" > /dev/null 2>&1 && echo "Cleared $TIER" || true
+}
+
+set_tier "complex"   "${CP}/moonshotai/Kimi-K2.5" "${CP}" "[\"anthropic/claude-sonnet-4-6\"]"
+set_tier "reasoning" "${CP}/moonshotai/Kimi-K2.5" "${CP}" "[\"anthropic/claude-sonnet-4-6\"]"
+
+# Clear tiers not managed by this script or vllm-setup
+for TIER in advanced long-context thinking; do
+  clear_tier "$TIER"
+done
+
+# --- Seed cached_models in user_providers so isModelAvailable passes on startup ---
+# Manifest's model-discovery service sets cached_models=[] for custom providers
+# (no fetcher config), causing tier overrides to fall through to auto.
+# We seed them here directly so the routing is correct immediately after restart.
+VLLM_ID=$(sqlite3 "$DB" \
+  "SELECT id FROM custom_providers WHERE agent_id='$AGENT_ID' AND name='vllm' LIMIT 1;")
+
+if [ -n "$VLLM_ID" ]; then
+  VLLM_MODELS='[{"id":"gemma-4"}]'
+  sqlite3 "$DB" "UPDATE user_providers SET cached_models='$VLLM_MODELS', models_fetched_at=datetime('now') WHERE agent_id='$AGENT_ID' AND provider='custom:$VLLM_ID';"
+  sqlite3 "$DB" "UPDATE custom_providers SET models='[{\"model_name\":\"gemma-4\",\"context_window\":32768}]' WHERE agent_id='$AGENT_ID' AND name='vllm';"
+  echo "Seeded cached_models for vllm provider ($VLLM_ID)"
+fi
+
+TOGETHER_CACHED='[{"id":"deepseek-ai/DeepSeek-V3.1"},{"id":"moonshotai/Kimi-K2.5"},{"id":"openai/gpt-oss-120b"}]'
+sqlite3 "$DB" "UPDATE user_providers SET cached_models='$TOGETHER_CACHED', models_fetched_at=datetime('now') WHERE agent_id='$AGENT_ID' AND provider='custom:$PROVIDER_ID';"
+echo "Seeded cached_models for together provider ($PROVIDER_ID)"
+
+echo "Tiers configured: complex/reasoning=Kimi-K2.5(fallback:sonnet-4.6)"

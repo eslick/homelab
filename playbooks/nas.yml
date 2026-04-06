@@ -44,7 +44,7 @@
         src: "//{{ nas_ip }}/{{ nas_share }}"
         path: "{{ nas_mount_point }}"
         fstype: cifs
-        opts: "credentials={{ nas_credentials_file }},uid=root,gid=root,iocharset=utf8,vers=3.0,_netdev,nofail"
+        opts: "credentials={{ nas_credentials_file }},uid=root,gid=root,iocharset=utf8,vers=3.0,cache=none,_netdev,nofail"
         state: mounted
       become: yes
       tags: [configure]

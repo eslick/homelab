@@ -1,0 +1,5 @@
+FROM vllm/vllm-openai:v0.19.0
+# Gemma-4 model type requires transformers from main branch (not yet in 4.57.6).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && pip install --no-cache-dir git+https://github.com/huggingface/transformers.git \
+    && apt-get purge -y git && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*

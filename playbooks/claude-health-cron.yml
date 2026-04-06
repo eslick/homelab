@@ -82,7 +82,7 @@
           # Collect all system data upfront so Claude only needs to interpret
           HEALTH_DATA="$({{ health_data_script }} 2>&1)"
 
-          /home/eslick/.local/bin/claude -p \
+          /usr/local/bin/claude -p \
             --model claude-sonnet-4-6 \
             --allowedTools "Bash,Write" \
             --max-turns 5 \
@@ -105,6 +105,21 @@
           echo "Health check run completed at $(date)"
       become: yes
       tags: [claude]
+
+    - name: Ensure cron log files exist and are writable by eslick
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: touch
+        owner: eslick
+        group: eslick
+        mode: '0644'
+        modification_time: preserve
+        access_time: preserve
+      become: yes
+      loop:
+        - /var/log/claude-health.log
+        - /var/log/openclaw-security.log
+      tags: [claude, cron, configure]
 
     - name: Set cron MAILTO to correct address
       ansible.builtin.cron:
@@ -161,7 +176,7 @@
           AUDIT_DATA="$(docker exec openclaw-gateway openclaw security audit --deep 2>&1)"
           FIX_DATA="$(docker exec openclaw-gateway openclaw security audit --fix 2>&1)"
 
-          /home/eslick/.local/bin/claude -p \
+          /usr/local/bin/claude -p \
             --model claude-sonnet-4-6 \
             --allowedTools "Write" \
             --max-turns 3 \

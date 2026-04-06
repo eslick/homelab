@@ -8,7 +8,6 @@
     tailscale_ip: "{{ ansible_tailscale0.ipv4.address }}"
     cert_dir: /etc/ssl/tailscale
     openclaw_port: 18789
-    couchdb_port: 5984
 
   tasks:
     - name: Install nginx
@@ -72,24 +71,16 @@
       when: not ansible_check_mode
       tags: [configure]
 
-    - name: Deploy nginx site config for Obsidian CouchDB
-      ansible.builtin.template:
-        src: ../templates/obsidian-nginx.conf.j2
-        dest: /etc/nginx/sites-available/obsidian
-        mode: '0644'
-      become: yes
-      notify: Reload nginx
-      tags: [configure, obsidian]
-
-    - name: Enable nginx site for Obsidian CouchDB
+    - name: Remove Obsidian CouchDB nginx site (decommissioned)
       ansible.builtin.file:
-        src: /etc/nginx/sites-available/obsidian
-        dest: /etc/nginx/sites-enabled/obsidian
-        state: link
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx/sites-enabled/obsidian
+        - /etc/nginx/sites-available/obsidian
       become: yes
       notify: Reload nginx
-      when: not ansible_check_mode
-      tags: [configure, obsidian]
+      tags: [configure]
 
     - name: Disable nginx default site
       ansible.builtin.file:
@@ -155,7 +146,6 @@
       loop:
         - '{{ openclaw_port }}'
         - '2099'
-        - '{{ couchdb_port }}'
       become: yes
       tags: [security]
 
@@ -167,6 +157,7 @@
           --cert-file {{ cert_dir }}/speedracer.crt
           --key-file {{ cert_dir }}/speedracer.key
           {{ tailscale_hostname }}
+          > /dev/null
           && systemctl reload nginx
         weekday: '0'
         hour: '3'

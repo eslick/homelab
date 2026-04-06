@@ -50,6 +50,17 @@
       become: yes
       tags: [configure, postfix]
 
+    - name: Deploy virtual alias map for domain-qualified recipients
+      ansible.builtin.template:
+        src: ../templates/postfix-virtual.j2
+        dest: /etc/postfix/virtual
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      notify: rebuild virtual aliases
+      tags: [configure, postfix]
+
     - name: Ensure local mail aliases redirect to ian@vitalreactor.com
       ansible.builtin.lineinfile:
         path: /etc/aliases
@@ -80,4 +91,8 @@
 
     - name: rebuild aliases
       ansible.builtin.command: newaliases
+      become: yes
+
+    - name: rebuild virtual aliases
+      ansible.builtin.command: postmap /etc/postfix/virtual
       become: yes
