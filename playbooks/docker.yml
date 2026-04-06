@@ -384,10 +384,10 @@
       changed_when: "'manifest/auto' in openclaw_default_model_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Set compaction threshold (24000 = 28672 hard limit minus ~4500 response headroom)
+    - name: Set compaction threshold (22000 = triggers early, falls back to gpt-oss at limit)
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.contextTokens 24000 --strict-json
+        command: node dist/index.js config set agents.defaults.contextTokens 22000 --strict-json
       become: yes
       register: openclaw_context_tokens_result
       changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
