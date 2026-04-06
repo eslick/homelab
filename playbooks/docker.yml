@@ -332,12 +332,44 @@
       changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
       tags: [openclaw, configure]
 
+    - name: Register QMD MCP server (BM25 search, no reranking)
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - openclaw
+          - mcp
+          - set
+          - qmd
+          - '{"command":"qmd","args":["mcp","--no-rerank"]}'
+      become: yes
+      register: openclaw_mcp_qmd_result
+      changed_when: "'Updated' in openclaw_mcp_qmd_result.stdout or 'Saved' in openclaw_mcp_qmd_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Add Obsidian vault as QMD collection (idempotent)
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - openclaw-gateway
+          - qmd
+          - collection
+          - add
+          - /vault
+      become: yes
+      register: openclaw_qmd_collection_result
+      changed_when: "'created' in openclaw_qmd_collection_result.stdout"
+      failed_when: false
+      tags: [openclaw, configure]
+
     - name: Configure Manifest provider
       community.docker.docker_container_exec:
         container: openclaw-gateway
         command: >
           node dist/index.js config set models.providers.manifest
-          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto","contextWindow":32768,"maxTokens":4096}]}'
+          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto","contextWindow":32768,"maxTokens":2048}]}'
       become: yes
       register: openclaw_manifest_provider_result
       changed_when: "'Updated' in openclaw_manifest_provider_result.stdout"
