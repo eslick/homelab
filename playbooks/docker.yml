@@ -420,10 +420,10 @@
       changed_when: "'Updated' in openclaw_recent_turns_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Set compaction model to Kimi-K2.5 via Together AI custom provider
+    - name: Set compaction model to DeepSeek-V3.1 via Together AI custom provider
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.model custom:2a30b0c0-132f-492d-a914-3bb275990ebc/moonshotai/Kimi-K2.5
+        command: node dist/index.js config set agents.defaults.compaction.model custom:2a30b0c0-132f-492d-a914-3bb275990ebc/deepseek-ai/DeepSeek-V3.1
       become: yes
       register: openclaw_compaction_model_result
       changed_when: "'Updated' in openclaw_compaction_model_result.stdout"
