@@ -372,13 +372,40 @@
       failed_when: false
       tags: [openclaw, configure]
 
-    - name: Set compaction threshold to 90% of input budget (25804 tokens = 90% of 32k-4k)
+    - name: Set compaction threshold (24000 = 28672 hard limit minus ~4500 response headroom)
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.contextTokens 25804 --strict-json
+        command: node dist/index.js config set agents.defaults.contextTokens 24000 --strict-json
       become: yes
       register: openclaw_context_tokens_result
       changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Reserve tokens for system prompt (10240 covers max observed 8651 + buffer)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.reserveTokens 10240 --strict-json
+      become: yes
+      register: openclaw_reserve_tokens_result
+      changed_when: "'Updated' in openclaw_reserve_tokens_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Keep last 2048 tokens verbatim after compaction
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.keepRecentTokens 2048 --strict-json
+      become: yes
+      register: openclaw_keep_recent_result
+      changed_when: "'Updated' in openclaw_keep_recent_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Preserve last 2 turns intact through compaction
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.recentTurnsPreserve 2 --strict-json
+      become: yes
+      register: openclaw_recent_turns_result
+      changed_when: "'Updated' in openclaw_recent_turns_result.stdout"
       tags: [openclaw, configure]
 
     - name: Set compaction model to Kimi-K2.5 via Together AI custom provider
