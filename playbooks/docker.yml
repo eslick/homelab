@@ -372,10 +372,10 @@
       failed_when: false
       tags: [openclaw, configure]
 
-    - name: Set compaction threshold to 85% of 32k context (27852 tokens)
+    - name: Set compaction threshold to 90% of 32k context (29491 tokens)
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.contextTokens 27852 --strict-json
+        command: node dist/index.js config set agents.defaults.contextTokens 29491 --strict-json
       become: yes
       register: openclaw_context_tokens_result
       changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
