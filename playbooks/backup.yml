@@ -11,6 +11,7 @@
       - /home
       - /etc
       - /opt/compose
+      - /opt/vaults
       - /var/lib/docker/volumes
 
   tasks:

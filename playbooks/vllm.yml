@@ -79,20 +79,12 @@
       become: yes
       tags: [configure, vllm]
 
-    - name: Deploy vLLM Dockerfile (adds gemma4 transformers support)
-      ansible.builtin.template:
-        src: ../templates/vllm-Dockerfile.j2
-        dest: "{{ compose_base }}/vllm/Dockerfile"
-        mode: '0644'
+    - name: Pull official vLLM gemma4 image
+      community.docker.docker_image:
+        name: "vllm/vllm-openai:gemma4"
+        source: pull
+        force_source: no
       become: yes
-      tags: [configure, vllm]
-
-    - name: Build vLLM image with updated transformers
-      ansible.builtin.command:
-        cmd: docker compose -f {{ compose_base }}/vllm/docker-compose.yml build
-      become: yes
-      register: vllm_build_result
-      changed_when: "'writing image' in vllm_build_result.stdout"
       tags: [docker, vllm]
 
     - name: Start vLLM container
