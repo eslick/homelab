@@ -3,12 +3,15 @@
 # model pulls, UFW rules, and Manifest routing inside the OpenClaw container.
 #
 # Manifest tier → model mapping:
-#   small          → ollama / gemma4:26b-a4b-it-q4_K_M  (fast local)
-#   standard       → ollama / gemma4:26b-a4b-it-q4_K_M  (default local)
-#   local-advanced → ollama / qwen3.5:27b                (large local)
-#   advanced       → together / Qwen/Qwen3.5-397B-A17B   (frontier MoE)
-#   long-context   → together / nvidia/Nemotron-3-Nano   (long context)
-#   thinking       → openai / o4-mini                    (reasoning)
+#   simple         → ollama / gemma4-custom:26b           (fast local)
+#   standard       → ollama / gemma4-custom:26b           (default local)
+#   small          → ollama / gemma4:26b-a4b-it-q4_K_M   (fast local legacy)
+#   local-advanced → ollama / qwen3.5:27b                 (large local)
+#   advanced       → together / Qwen/Qwen3.5-397B-A17B    (frontier MoE)
+#   long-context   → together / nvidia/Nemotron-3-Nano    (long context)
+#   thinking       → openai / o4-mini                     (reasoning legacy)
+#   complex        → together / Qwen/Qwen3.5-397B-A17B    (frontier MoE)
+#   reasoning      → together / moonshotai/Kimi-K2.5      (reasoning)
 
 - name: Configure Ollama
   hosts: homelab
@@ -41,13 +44,14 @@
         content: |
           [Service]
           Environment="OLLAMA_HOST=0.0.0.0:11434"
-          Environment="OLLAMA_KEEP_ALIVE=15m"
+          Environment="OLLAMA_KEEP_ALIVE=-1"
           Environment="OLLAMA_MAX_LOADED_MODELS=1"
-          Environment="OLLAMA_NUM_PARALLEL=2"
+          Environment="OLLAMA_NUM_PARALLEL=1"
           Environment="OLLAMA_MAX_QUEUE=32"
           Environment="OLLAMA_FLASH_ATTENTION=1"
           Environment="OLLAMA_KV_CACHE_TYPE=q4_0"
           Environment="OLLAMA_GPU_OVERHEAD=2147483648"
+          Environment="OLLAMA_DEBUG=1"
       become: yes
       notify: Reload systemd and restart Ollama
       tags: [configure, ollama]
@@ -58,7 +62,7 @@
         state: started
         enabled: yes
       become: yes
-      tags: [service, ollama]
+      tags: [service, ollama, never]  # disabled: TGI replaced Ollama (re-enable with --tags service,ollama)
 
     # --- UFW rules ---
 
@@ -96,21 +100,21 @@
       loop: "{{ ollama_models }}"
       register: ollama_pull_result
       changed_when: "'already up to date' not in ollama_pull_result.stdout"
-      tags: [models, ollama]
+      tags: [models, ollama, never]  # disabled: TGI replaced Ollama
 
     - name: Copy Modelfile for gemma4-custom:26b
       ansible.builtin.copy:
         src: ../files/ollama-gemma4-custom-26b.Modelfile
         dest: /tmp/ollama-gemma4-custom-26b.Modelfile
         mode: '0644'
-      tags: [models, ollama]
+      tags: [models, ollama, never]  # disabled: TGI replaced Ollama
 
     - name: Create gemma4-custom:26b model from Modelfile
       ansible.builtin.command:
         cmd: ollama create gemma4-custom:26b -f /tmp/ollama-gemma4-custom-26b.Modelfile
       register: ollama_create_result
       changed_when: "'success' in ollama_create_result.stdout | lower"
-      tags: [models, ollama]
+      tags: [models, ollama, never]  # disabled: TGI replaced Ollama
 
     # --- Manifest routing (via loopback API inside container) ---
     # All API calls run from inside the container (loopback = trusted, no auth needed).
@@ -131,26 +135,30 @@
           EXISTING=$(curl -sf $BASE/custom-providers);
           OLLAMA_ID=$(echo $EXISTING | python3 -c \"import json,sys; p=[x for x in json.load(sys.stdin) if x['name']=='ollama']; print(p[0]['id'] if p else '')\" 2>/dev/null);
           if [ -z \"$OLLAMA_ID\" ]; then
-          RESP=$(curl -sf -X POST -H 'Content-Type: application/json' -d '{\"name\":\"ollama\",\"base_url\":\"http://host.docker.internal:11434/v1\",\"models\":[{\"model_name\":\"gemma4:26b-a4b-it-q4_K_M\"},{\"model_name\":\"qwen3.5:27b\"}]}' $BASE/custom-providers) || exit 1;
+          RESP=$(curl -sf -X POST -H 'Content-Type: application/json' -d '{\"name\":\"ollama\",\"base_url\":\"http://host.docker.internal:11434/v1\",\"models\":[{\"model_name\":\"gemma4-custom:26b\",\"context_window\":32768},{\"model_name\":\"gemma4:26b-a4b-it-q4_K_M\"},{\"model_name\":\"qwen3.5:27b\"}]}' $BASE/custom-providers) || exit 1;
           OLLAMA_ID=$(echo $RESP | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\" 2>/dev/null);
           fi;
           [ -z \"$OLLAMA_ID\" ] && echo 'ERROR: could not get ollama provider id' && exit 1;
           curl -sf -X POST -H 'Content-Type: application/json' -d \"{\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\",\\\"apiKey\\\":\\\"ollama\\\"}\" $BASE/providers > /dev/null;
           curl -sf -X POST -H 'Content-Type: application/json' -d '{\"provider\":\"together\",\"apiKey\":\"{{ together_api_key }}\"}' $BASE/providers > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/small > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/standard > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"qwen3.5:27b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/local-advanced > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"custom:$OLLAMA_ID/gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/small > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"custom:$OLLAMA_ID/gemma4-custom:26b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/standard > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"custom:$OLLAMA_ID/qwen3.5:27b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/local-advanced > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"Qwen/Qwen3.5-397B-A17B\",\"provider\":\"together\"}' $BASE/tiers/advanced > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"nvidia/Nemotron-3-Nano\",\"provider\":\"together\"}' $BASE/tiers/long-context > /dev/null;
           curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"o4-mini\",\"provider\":\"openai\"}' $BASE/tiers/thinking > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"gemma4:26b-a4b-it-q4_K_M\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/simple > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"qwen3.5:27b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/complex > /dev/null;
-          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"o4-mini\",\"provider\":\"openai\"}' $BASE/tiers/reasoning > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d \"{\\\"model\\\":\\\"custom:$OLLAMA_ID/gemma4-custom:26b\\\",\\\"provider\\\":\\\"custom:$OLLAMA_ID\\\"}\" $BASE/tiers/simple > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"Qwen/Qwen3.5-397B-A17B\",\"provider\":\"together\"}' $BASE/tiers/complex > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"model\":\"moonshotai/Kimi-K2.5\",\"provider\":\"together\"}' $BASE/tiers/reasoning > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"models\":[\"anthropic/claude-sonnet-4-6\"]}' $BASE/tiers/simple/fallbacks > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"models\":[\"anthropic/claude-sonnet-4-6\"]}' $BASE/tiers/standard/fallbacks > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"models\":[\"anthropic/claude-sonnet-4-6\"]}' $BASE/tiers/complex/fallbacks > /dev/null;
+          curl -sf -X PUT -H 'Content-Type: application/json' -d '{\"models\":[\"anthropic/claude-sonnet-4-6\"]}' $BASE/tiers/reasoning/fallbacks > /dev/null;
           echo 'Manifest routing configured'"
       become: yes
       register: manifest_routing_result
       changed_when: "'configured' in manifest_routing_result.stdout"
-      tags: [manifest, ollama, configure]
+      tags: [manifest, ollama, configure, never]  # disabled: TGI replaced Ollama (routing via tgi.yml)
 
   handlers:
     - name: Reload systemd and restart Ollama

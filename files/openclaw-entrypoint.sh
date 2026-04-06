@@ -9,6 +9,23 @@ MANIFEST_PLUGIN="/home/node/.openclaw/extensions/manifest/dist/server.js"
 
 mkdir -p "${MANIFEST_DB_DIR}"
 
+# Patch manifest plugin: fix double-stripping of custom provider model names with slashes
+# Bug: rawModelName() strips 'custom:UUID/' leaving 'provider/model', then stripModelPrefix()
+# strips 'provider/' again leaving just 'model'. Fix: make stripModelPrefix a no-op for 'custom'.
+PROVIDER_CLIENT="/home/node/.openclaw/extensions/manifest/dist/backend/routing/proxy/provider-client.js"
+if [ -f "${PROVIDER_CLIENT}" ] && ! grep -q "endpointKey === 'custom'" "${PROVIDER_CLIENT}"; then
+  node -e "
+    const fs = require('fs');
+    let src = fs.readFileSync('${PROVIDER_CLIENT}', 'utf8');
+    const old = \"if (endpointKey === 'openrouter')\\n        return model;\\n    const slashIdx\";
+    const fix = \"if (endpointKey === 'openrouter')\\n        return model;\\n    if (endpointKey === 'custom')\\n        return model;\\n    const slashIdx\";
+    if (src.includes(old)) {
+      fs.writeFileSync('${PROVIDER_CLIENT}', src.replace(old, fix));
+      process.stdout.write('[entrypoint] Patched manifest stripModelPrefix (custom provider double-strip fix)\\n');
+    }
+  " 2>/dev/null || true
+fi
+
 # Start manifest server on port 2099 if the plugin is installed
 if [ -f "${MANIFEST_PLUGIN}" ]; then
   node -e "

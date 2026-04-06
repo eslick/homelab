@@ -323,7 +323,7 @@
         container: openclaw-gateway
         command: >
           node dist/index.js config set models.providers.manifest
-          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto"}]}'
+          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto","contextWindow":32768,"maxTokens":8192}]}'
       become: yes
       register: openclaw_manifest_provider_result
       changed_when: "'Updated' in openclaw_manifest_provider_result.stdout"
@@ -337,3 +337,62 @@
       register: openclaw_default_model_result
       changed_when: "'manifest/auto' in openclaw_default_model_result.stdout"
       tags: [openclaw, configure]
+
+    - name: Remove anthropic/claude-sonnet-4-6 from default models (use manifest/auto only)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config unset agents.defaults.models.anthropic/claude-sonnet-4-6
+      become: yes
+      register: openclaw_remove_sonnet_result
+      changed_when: "'Removed' in openclaw_remove_sonnet_result.stdout"
+      failed_when: false
+      tags: [openclaw, configure]
+
+    - name: Set compaction threshold to 24k (trigger before 32k num_ctx is hit)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.contextTokens 24576 --strict-json
+      become: yes
+      register: openclaw_context_tokens_result
+      changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Set compaction model to Kimi-K2.5 via Together AI custom provider
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.compaction.model custom:2a30b0c0-132f-492d-a914-3bb275990ebc/moonshotai/Kimi-K2.5
+      become: yes
+      register: openclaw_compaction_model_result
+      changed_when: "'Updated' in openclaw_compaction_model_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Set LLM idle timeout to 300s (local inference prefill can be slow)
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: node dist/index.js config set agents.defaults.llm.idleTimeoutSeconds 300 --strict-json
+      become: yes
+      register: openclaw_llm_timeout_result
+      changed_when: "'Updated' in openclaw_llm_timeout_result.stdout"
+      tags: [openclaw, configure]
+
+    - name: Render Together AI manifest setup script to host
+      ansible.builtin.template:
+        src: ../templates/manifest-together-setup.sh.j2
+        dest: /tmp/manifest-together-setup.sh
+        mode: '0700'
+      tags: [openclaw, configure, manifest]
+
+    - name: Copy Together AI setup script into openclaw-gateway container
+      ansible.builtin.command:
+        cmd: docker cp /tmp/manifest-together-setup.sh openclaw-gateway:/tmp/manifest-together-setup.sh
+      become: yes
+      changed_when: false
+      tags: [openclaw, configure, manifest]
+
+    - name: Register Together AI custom provider and configure tier routing
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway sh /tmp/manifest-together-setup.sh
+      become: yes
+      register: manifest_together_result
+      changed_when: "'Created' in manifest_together_result.stdout"
+      tags: [openclaw, configure, manifest]

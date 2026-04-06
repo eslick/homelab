@@ -1,0 +1,45 @@
+services:
+  tgi:
+    image: ghcr.io/huggingface/text-generation-inference:latest
+    container_name: tgi
+    ports:
+      - "127.0.0.1:{{ tgi_port }}:80"
+    environment:
+      - HF_TOKEN={{ hugging_face_token }}
+      - MODEL_ID={{ tgi_model_id }}
+      - QUANTIZE={{ tgi_quantize }}
+      # VRAM cap: prevents TGI from pre-allocating KV cache that exceeds physical VRAM.
+      # On RTX 3090 (24 GB): NF4 weights ~13 GB + KV cache (32k tokens) ~6 GB = ~21 GB.
+      # 65k-token KV cache would require ~27 GB → NVIDIA driver panic → hard system reboot.
+      - CUDA_MEMORY_FRACTION={{ tgi_cuda_memory_fraction }}
+      - MAX_INPUT_LENGTH={{ tgi_max_input_length }}
+      - MAX_TOTAL_TOKENS={{ tgi_max_total_tokens }}
+      - MAX_BATCH_PREFILL_TOKENS={{ tgi_max_input_length }}
+      - MAX_BATCH_TOTAL_TOKENS={{ tgi_max_batch_total_tokens }}
+      - MAX_CONCURRENT_REQUESTS={{ tgi_max_concurrent_requests }}
+      - PORT=80
+    volumes:
+      - tgi-models:/data
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+
+volumes:
+  tgi-models:
+
+networks:
+  {{ docker_network }}:
+    external: true

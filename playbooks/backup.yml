@@ -34,6 +34,14 @@
           export RESTIC_PASSWORD_FILE="{{ restic_password_file }}"
           LOG=/var/log/restic-backup.log
           exec &>> "$LOG"
+
+          on_error() {
+            echo "=== Backup FAILED $(date) ==="
+            echo "Restic backup failed on $(hostname) at $(date)" \
+              | mail -s "ALERT: Homelab backup failed" root
+          }
+          trap on_error ERR
+
           echo "=== Backup started $(date) ==="
           restic -r {{ restic_nas_repo }} backup {{ backup_paths | join(' ') }} \
             --exclude="*.tmp" --exclude="*.log" \
