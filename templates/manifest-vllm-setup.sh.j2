@@ -52,17 +52,26 @@ wget -qO- \
   "http://127.0.0.1:2099/api/v1/routing/open-claw/providers" > /dev/null
 echo "Registered vLLM provider key"
 
-# --- Tier assignments ---
+# --- Tier assignments via REST API (bypasses routing cache correctly) ---
 CP="custom:${PROVIDER_ID}"
 M="${CP}/${MODEL_ID}"
+BASE_API=http://127.0.0.1:2099/api/v1/routing/open-claw/tiers
+AUTH="Authorization: Bearer $MANIFEST_KEY"
 
-sqlite3 "$DB" "
-UPDATE tier_assignments
-SET override_model='${M}',
-    override_provider='${CP}',
-    updated_at=datetime('now')
-WHERE agent_id='$AGENT_ID' AND tier IN ('simple', 'standard', 'small', 'local-advanced');
-"
+set_tier() {
+  TIER=$1; MODEL=$2; PROVIDER=$3
+  wget -qO- --method=PUT \
+    --body-data "{\"model\":\"$MODEL\",\"provider\":\"$PROVIDER\"}" \
+    --header "Content-Type: application/json" \
+    --header "$AUTH" \
+    "$BASE_API/$TIER" > /dev/null 2>&1 || { echo "FAILED override: $TIER"; return; }
+  echo "Set $TIER → $MODEL"
+}
+
+set_tier "simple"        "$M" "$CP"
+set_tier "standard"      "$M" "$CP"
+set_tier "small"         "$M" "$CP"
+set_tier "local-advanced" "$M" "$CP"
 
 # --- Seed cached_models so Manifest's model-discovery doesn't zero out the cache ---
 VLLM_MODELS="[{\"id\":\"${MODEL_ID}\"}]"
