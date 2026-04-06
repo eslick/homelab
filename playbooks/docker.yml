@@ -347,7 +347,7 @@
         container: openclaw-gateway
         command: >
           node dist/index.js config set models.providers.manifest
-          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto","contextWindow":32768,"maxTokens":8192}]}'
+          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto","contextWindow":32768,"maxTokens":4096}]}'
       become: yes
       register: openclaw_manifest_provider_result
       changed_when: "'Updated' in openclaw_manifest_provider_result.stdout"
@@ -372,10 +372,10 @@
       failed_when: false
       tags: [openclaw, configure]
 
-    - name: Set compaction threshold to 90% of 32k context (29491 tokens)
+    - name: Set compaction threshold to 90% of input budget (25804 tokens = 90% of 32k-4k)
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.contextTokens 29491 --strict-json
+        command: node dist/index.js config set agents.defaults.contextTokens 25804 --strict-json
       become: yes
       register: openclaw_context_tokens_result
       changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
