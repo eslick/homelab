@@ -26,6 +26,13 @@ if [ -f "${PROVIDER_CLIENT}" ] && ! grep -q "endpointKey === 'custom'" "${PROVID
   " 2>/dev/null || true
 fi
 
+# Patch manifest plugin: increase provider HTTP timeout from 180s to 300s.
+# Reasoning models (Kimi-K2.5) can think for >3 minutes before first token.
+if [ -f "${PROVIDER_CLIENT}" ] && grep -q "PROVIDER_TIMEOUT_MS = 180_000" "${PROVIDER_CLIENT}"; then
+  sed -i 's/PROVIDER_TIMEOUT_MS = 180_000/PROVIDER_TIMEOUT_MS = 300_000/' "${PROVIDER_CLIENT}"
+  echo "[entrypoint] Patched manifest PROVIDER_TIMEOUT_MS 180s -> 300s"
+fi
+
 # Start manifest server on port 2099 if the plugin is installed
 if [ -f "${MANIFEST_PLUGIN}" ]; then
   node -e "
