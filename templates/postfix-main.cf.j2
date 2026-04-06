@@ -21,6 +21,9 @@ mydomain = vitalreactor.com
 myorigin = $mydomain
 sender_canonical_maps = static:ian@vitalreactor.com
 
+# Rewrite system recipients before delivery decision
+virtual_alias_maps = hash:/etc/postfix/virtual
+
 # Local delivery only for root/system aliases
 mydestination = $myhostname, localhost.$mydomain, localhost
 inet_interfaces = loopback-only

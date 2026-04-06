@@ -157,6 +157,7 @@
           --cert-file {{ cert_dir }}/speedracer.crt
           --key-file {{ cert_dir }}/speedracer.key
           {{ tailscale_hostname }}
+          > /dev/null
           && systemctl reload nginx
         weekday: '0'
         hour: '3'
