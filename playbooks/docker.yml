@@ -447,3 +447,25 @@
       register: manifest_vllm_result
       changed_when: "'Created' in manifest_vllm_result.stdout"
       tags: [openclaw, configure, manifest]
+
+    - name: Render Together AI manifest setup script to host
+      ansible.builtin.template:
+        src: ../templates/manifest-together-setup.sh.j2
+        dest: /tmp/manifest-together-setup.sh
+        mode: '0700'
+      tags: [openclaw, configure, manifest]
+
+    - name: Copy Together AI setup script into openclaw-gateway persistent volume
+      ansible.builtin.command:
+        cmd: docker cp /tmp/manifest-together-setup.sh openclaw-gateway:/home/node/.openclaw/manifest-together-setup.sh
+      become: yes
+      changed_when: false
+      tags: [openclaw, configure, manifest]
+
+    - name: Register Together AI provider and configure complex/reasoning tier routing
+      ansible.builtin.command:
+        cmd: docker exec openclaw-gateway sh /home/node/.openclaw/manifest-together-setup.sh
+      become: yes
+      register: manifest_together_result
+      changed_when: "'Created' in manifest_together_result.stdout"
+      tags: [openclaw, configure, manifest]

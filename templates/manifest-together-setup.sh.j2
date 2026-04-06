@@ -97,7 +97,7 @@ clear_tier() {
 
 set_tier "simple"    "anthropic/claude-haiku-4-5-20251001" "anthropic" "[\"${CP}/openai/gpt-oss-120b\"]"
 set_tier "standard"  "anthropic/claude-haiku-4-5-20251001" "anthropic" "[\"${CP}/openai/gpt-oss-120b\"]"
-set_tier "complex"   "${CP}/deepseek-ai/DeepSeek-V3.1"     "${CP}"     "[\"anthropic/claude-sonnet-4-6\"]"
+set_tier "complex"   "${CP}/moonshotai/Kimi-K2.5"          "${CP}"     "[\"anthropic/claude-sonnet-4-6\"]"
 set_tier "reasoning" "${CP}/moonshotai/Kimi-K2.5"          "${CP}"     "[\"anthropic/claude-sonnet-4-6\"]"
 
 # Clear unused tiers
@@ -123,4 +123,4 @@ TOGETHER_CACHED='[{"id":"deepseek-ai/DeepSeek-V3.1"},{"id":"moonshotai/Kimi-K2.5
 sqlite3 "$DB" "UPDATE user_providers SET cached_models='$TOGETHER_CACHED', models_fetched_at=datetime('now') WHERE agent_id='$AGENT_ID' AND provider='custom:$PROVIDER_ID';"
 echo "Seeded cached_models for together provider ($PROVIDER_ID)"
 
-echo "Tiers configured: simple/standard=haiku(fallback:gpt-oss-120b), complex=DeepSeek-V3.1(fallback:sonnet-4.6), reasoning=Kimi-K2.5(fallback:sonnet-4.6)"
+echo "Tiers configured: simple/standard=haiku(fallback:gpt-oss-120b), complex/reasoning=Kimi-K2.5(fallback:sonnet-4.6)"

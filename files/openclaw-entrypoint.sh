@@ -39,10 +39,12 @@ if [ -f "${MANIFEST_PLUGIN}" ]; then
   sleep 5
 
   # Re-seed Manifest provider/tier config (cached_models cleared on every restart by discovery service)
-  MANIFEST_SETUP="${HOME}/.openclaw/manifest-setup.sh"
-  if [ -f "${MANIFEST_SETUP}" ]; then
-    sh "${MANIFEST_SETUP}" 2>&1 | sed 's/^/[entrypoint] manifest-setup: /' || true
-  fi
+  for SETUP_SCRIPT in "${HOME}/.openclaw/manifest-setup.sh" "${HOME}/.openclaw/manifest-together-setup.sh"; do
+    if [ -f "${SETUP_SCRIPT}" ]; then
+      LABEL=$(basename "${SETUP_SCRIPT}" .sh)
+      sh "${SETUP_SCRIPT}" 2>&1 | sed "s/^/[entrypoint] ${LABEL}: /" || true
+    fi
+  done
 fi
 
 # Start socat relay: container port 2100 → manifest on 127.0.0.1:2099
