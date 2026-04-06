@@ -332,16 +332,6 @@
       changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Remove direct ollama provider from OpenClaw (routing goes through Manifest)
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config unset models.providers.ollama
-      become: yes
-      register: openclaw_remove_ollama_result
-      changed_when: "'Removed' in openclaw_remove_ollama_result.stdout"
-      failed_when: false
-      tags: [openclaw, configure]
-
     - name: Configure Manifest provider
       community.docker.docker_container_exec:
         container: openclaw-gateway
@@ -362,16 +352,6 @@
       changed_when: "'manifest/auto' in openclaw_default_model_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Remove anthropic/claude-sonnet-4-6 from default models (use manifest/auto only)
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config unset agents.defaults.models.anthropic/claude-sonnet-4-6
-      become: yes
-      register: openclaw_remove_sonnet_result
-      changed_when: "'Removed' in openclaw_remove_sonnet_result.stdout"
-      failed_when: false
-      tags: [openclaw, configure]
-
     - name: Set compaction threshold (24000 = 28672 hard limit minus ~4500 response headroom)
       community.docker.docker_container_exec:
         container: openclaw-gateway
@@ -381,28 +361,28 @@
       changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Reserve tokens for system prompt (10240 covers max observed 8651 + buffer)
+    - name: Reserve tokens for system prompt during compaction
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.reserveTokens 10240 --strict-json
+        command: node dist/index.js config set agents.defaults.compaction.reserveTokens 8192 --strict-json
       become: yes
       register: openclaw_reserve_tokens_result
       changed_when: "'Updated' in openclaw_reserve_tokens_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Keep last 2048 tokens verbatim after compaction
+    - name: Keep last 4096 tokens verbatim after compaction
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.keepRecentTokens 2048 --strict-json
+        command: node dist/index.js config set agents.defaults.compaction.keepRecentTokens 4096 --strict-json
       become: yes
       register: openclaw_keep_recent_result
       changed_when: "'Updated' in openclaw_keep_recent_result.stdout"
       tags: [openclaw, configure]
 
-    - name: Preserve last 2 turns intact through compaction
+    - name: Preserve last 4 turns intact through compaction
       community.docker.docker_container_exec:
         container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.recentTurnsPreserve 2 --strict-json
+        command: node dist/index.js config set agents.defaults.compaction.recentTurnsPreserve 4 --strict-json
       become: yes
       register: openclaw_recent_turns_result
       changed_when: "'Updated' in openclaw_recent_turns_result.stdout"
@@ -447,6 +427,25 @@
       register: manifest_vllm_result
       changed_when: "'Created' in manifest_vllm_result.stdout"
       tags: [openclaw, configure, manifest]
+
+    - name: Copy tool discipline patch into openclaw-gateway workspace
+      ansible.builtin.command:
+        cmd: docker cp {{ playbook_dir }}/../files/openclaw-workspace-agents-patch.md openclaw-gateway:/tmp/agents-patch.md
+      become: yes
+      changed_when: false
+      tags: [openclaw, configure, workspace]
+
+    - name: Inject tool discipline into AGENTS.md if not already present
+      community.docker.docker_container_exec:
+        container: openclaw-gateway
+        command: >
+          sh -c 'if ! grep -q "Tool Discipline" /home/node/.openclaw/workspace/AGENTS.md; then
+            cat /tmp/agents-patch.md >> /home/node/.openclaw/workspace/AGENTS.md;
+            echo "Patched"; else echo "Already present"; fi'
+      become: yes
+      register: openclaw_agents_patch_result
+      changed_when: "'Patched' in openclaw_agents_patch_result.stdout"
+      tags: [openclaw, configure, workspace]
 
     - name: Render Together AI manifest setup script to host
       ansible.builtin.template:

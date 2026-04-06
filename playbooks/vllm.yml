@@ -1,6 +1,5 @@
 ---
 # Deploys vLLM for local Gemma-4 inference with GPU access.
-# Stops and disables Ollama — vLLM becomes the sole local inference backend.
 #
 # Manifest tier → model mapping (after this playbook):
 #   simple         → vLLM / cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  (AWQ-Marlin, prefix-cached)
@@ -17,7 +16,7 @@
 #   vLLM auto-fits KV cache into remaining ~7 GB. max-model-len=32768 limits context.
 #   DO NOT raise gpu-memory-utilization above 0.90 without checking nvidia-smi headroom.
 
-- name: Deploy vLLM GPU container and retire Ollama
+- name: Deploy vLLM GPU container
   hosts: homelab
   gather_facts: no
 
@@ -33,33 +32,6 @@
     vllm_gpu_memory_fraction: "0.90"   # cap at 90% of 24 GB = 21.6 GB; headroom for CUDA graphs
 
   tasks:
-
-    # --- Stop Ollama ---
-
-    - name: Stop and disable Ollama systemd service
-      ansible.builtin.systemd:
-        name: ollama
-        state: stopped
-        enabled: false
-      become: yes
-      tags: [disable, ollama]
-
-    # --- Tear down TGI if present ---
-
-    - name: Check if TGI compose exists
-      ansible.builtin.stat:
-        path: "{{ compose_base }}/tgi/docker-compose.yml"
-      register: tgi_compose
-      tags: [docker, vllm]
-
-    - name: Stop TGI container if running
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/tgi"
-        state: absent
-      become: yes
-      when: tgi_compose.stat.exists
-      failed_when: false
-      tags: [docker, vllm]
 
     # --- vLLM compose deployment ---
 
@@ -146,3 +118,62 @@
       register: manifest_vllm_result
       changed_when: "'Created' in manifest_vllm_result.stdout"
       tags: [manifest, vllm, configure]
+
+    # --- Clean up legacy inference backends (Ollama, TGI) ---
+
+    - name: Remove TGI compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/tgi"
+        state: absent
+      become: yes
+      tags: [cleanup, vllm]
+
+    - name: Remove TGI Docker volume
+      community.docker.docker_volume:
+        name: tgi_tgi-models
+        state: absent
+      become: yes
+      tags: [cleanup, vllm]
+
+    - name: Remove Ollama systemd override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/ollama.service.d
+        state: absent
+      become: yes
+      notify: reload systemd
+      tags: [cleanup, vllm]
+
+    - name: Remove Ollama binary
+      ansible.builtin.file:
+        path: /usr/local/bin/ollama
+        state: absent
+      become: yes
+      tags: [cleanup, vllm]
+
+    - name: Remove Ollama systemd unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/ollama.service
+        state: absent
+      become: yes
+      notify: reload systemd
+      tags: [cleanup, vllm]
+
+    - name: Remove Ollama model data
+      ansible.builtin.file:
+        path: /usr/share/ollama/.ollama/models
+        state: absent
+      become: yes
+      tags: [cleanup, vllm]
+
+    - name: Remove Ollama user home directory
+      ansible.builtin.file:
+        path: /usr/share/ollama
+        state: absent
+      become: yes
+      tags: [cleanup, vllm]
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      become: yes
