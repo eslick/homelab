@@ -65,6 +65,7 @@
     agentos_beam2_port: 14101
     agentos_port: 14000
     agentos_cookie: "agentos_dev"
+    agentos_cluster_nodes: 1  # set to 2 to re-enable beam-2 for cluster testing
 
   tasks:
     # --- Shared infrastructure ---
@@ -253,6 +254,19 @@
       become: yes
       register: agentos_beam2_up
       changed_when: "'Started' in agentos_beam2_up.stdout or 'Created' in agentos_beam2_up.stdout"
+      when: agentos_cluster_nodes | int >= 2
+      tags: [agentos, service]
+
+    - name: Stop beam-2 when running single-node
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          stop beam-2
+      become: yes
+      register: agentos_beam2_stop
+      changed_when: "'Stopped' in agentos_beam2_stop.stderr"
+      failed_when: false
+      when: agentos_cluster_nodes | int < 2
       tags: [agentos, service]
 
     # --- Datomic Transactor ---
