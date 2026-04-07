@@ -49,6 +49,41 @@ if [ -f "${PROVIDER_CLIENT}" ] && ! grep -q "VLLM_MAX_OUTPUT_TOKENS" "${PROVIDER
   " 2>/dev/null || true
 fi
 
+# Patch proxy-response-handler: strip reasoning_content from custom provider (Together AI) responses.
+# DeepSeek-V3.1 on Together returns chain-of-thought in reasoning_content; the custom-provider path
+# has no transform so it leaks verbatim into Telegram/Discord chats.
+# Fix: add a transform to the streaming path and strip from non-streaming response body.
+RESPONSE_HANDLER="/home/node/.openclaw/extensions/manifest/dist/backend/routing/proxy/proxy-response-handler.js"
+if [ -f "${RESPONSE_HANDLER}" ] && ! grep -q "STRIP_REASONING_CONTENT" "${RESPONSE_HANDLER}"; then
+  node -e "
+    const fs = require('fs');
+    let src = fs.readFileSync('${RESPONSE_HANDLER}', 'utf8');
+
+    // Streaming: add transform to strip reasoning_content from SSE chunks
+    const oldStream = 'return (0, stream_writer_1.pipeStream)(forward.response.body, res);';
+    const newStream = 'return (0, stream_writer_1.pipeStream)(forward.response.body, res, (chunk) => { /* STRIP_REASONING_CONTENT */ try { const obj = JSON.parse(chunk); if (obj && obj.choices) { for (const c of obj.choices) { if (c.delta && \\'reasoning_content\\' in c.delta) delete c.delta.reasoning_content; } } return \\'data: \\' + JSON.stringify(obj) + String.fromCharCode(10, 10); } catch { return \\'data: \\' + chunk + String.fromCharCode(10, 10); } });';
+
+    // Non-streaming: strip reasoning_content after json() parse
+    const oldNonStream = 'responseBody = await forward.response.json();';
+    const newNonStream = 'responseBody = await forward.response.json(); /* STRIP_REASONING_CONTENT */ if (responseBody && responseBody.choices) { for (const c of responseBody.choices) { if (c.message && \\'reasoning_content\\' in c.message) delete c.message.reasoning_content; } }';
+
+    let patched = src;
+    if (src.includes(oldStream)) {
+      patched = patched.replace(oldStream, newStream);
+      process.stdout.write('[entrypoint] Patched proxy-response-handler: stream reasoning_content strip\\n');
+    } else {
+      process.stdout.write('[entrypoint] WARN: stream patch target not found in proxy-response-handler\\n');
+    }
+    if (patched.includes(oldNonStream)) {
+      patched = patched.replace(oldNonStream, newNonStream);
+      process.stdout.write('[entrypoint] Patched proxy-response-handler: non-stream reasoning_content strip\\n');
+    } else {
+      process.stdout.write('[entrypoint] WARN: non-stream patch target not found in proxy-response-handler\\n');
+    }
+    fs.writeFileSync('${RESPONSE_HANDLER}', patched);
+  " 2>/dev/null || true
+fi
+
 # Start manifest server on port 2099 if the plugin is installed
 if [ -f "${MANIFEST_PLUGIN}" ]; then
   node -e "
