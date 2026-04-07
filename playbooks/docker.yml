@@ -23,6 +23,8 @@
         ports: [9000, 9001]
       - name: datomic
         ports: [4334]
+      - name: agentos
+        ports: []  # 127.0.0.1-bound; nginx handles external access via port 14000
 
     # Obsidian vault (synced via Syncthing — no secrets here)
     vault_path: /opt/vaults/obsidian
@@ -56,6 +58,13 @@
     # Datomic Transactor
     datomic_port: 4334
     datomic_version: "1.0.7556"
+
+    # AgentOS BEAM cluster
+    agentos_src_path: /home/eslick/homelab/projects/agentos
+    agentos_beam1_port: 14100
+    agentos_beam2_port: 14101
+    agentos_port: 14000
+    agentos_cookie: "agentos_dev"
 
   tasks:
     # --- Shared infrastructure ---
@@ -147,6 +156,104 @@
         state: present
       become: yes
       tags: [docker, service]
+
+    # --- AgentOS BEAM cluster ---
+
+    - name: Ensure agentos compose directory exists
+      ansible.builtin.file:
+        path: "{{ compose_base }}/agentos"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [agentos, configure]
+
+    - name: Deploy agentos compose file from template
+      ansible.builtin.template:
+        src: "../templates/agentos-compose.yml.j2"
+        dest: "{{ compose_base }}/agentos/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [agentos, configure]
+
+    - name: Create agent_os_dev database in CockroachDB
+      ansible.builtin.command: >
+        docker exec cockroachdb
+        cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS agent_os_dev"
+      register: agentos_crdb_db
+      changed_when: "'CREATE DATABASE' in agentos_crdb_db.stdout"
+      become: yes
+      tags: [agentos]
+
+    - name: Create AgentOS artifacts bucket in MinIO
+      ansible.builtin.command: >
+        docker run --rm --network {{ docker_network }} --entrypoint sh minio/mc -c "
+          mc alias set local http://minio:9000 {{ minio_root_user }} {{ minio_root_password }} &&
+          mc mb --ignore-existing local/artifacts"
+      register: agentos_bucket
+      changed_when: "'Bucket created' in agentos_bucket.stdout"
+      become: yes
+      tags: [agentos]
+
+    - name: Build AgentOS dev image
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          build beam-1
+      become: yes
+      register: agentos_build
+      changed_when: "'writing image' in agentos_build.stdout"
+      tags: [agentos, service]
+
+    - name: Run AgentOS migrations (one-off container, before starting servers)
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          run --rm beam-1 mix ecto.migrate
+      become: yes
+      register: agentos_migrate
+      changed_when: "'Migrated' in agentos_migrate.stderr"
+      # CockroachDB DDL auto-commits mid-transaction; Ecto's rollback handler
+      # panics with rc=1 even when all migrations succeeded. Treat rc=1 with
+      # the known MatchError as a warning, not a hard failure.
+      failed_when: >
+        agentos_migrate.rc not in [0, 1] or
+        (agentos_migrate.rc == 1 and
+         'MatchError' not in agentos_migrate.stderr and
+         'TransactionError' not in agentos_migrate.stderr)
+      when: not ansible_check_mode
+      tags: [agentos, service]
+
+    - name: Start beam-1
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          up -d --no-deps beam-1
+      become: yes
+      register: agentos_beam1_up
+      changed_when: "'Started' in agentos_beam1_up.stdout or 'Created' in agentos_beam1_up.stdout"
+      tags: [agentos, service]
+
+    - name: Wait for beam-1 Phoenix endpoint to respond
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ agentos_beam1_port }}"
+        status_code: [200, 301, 302, 303]
+        timeout: 5
+      register: agentos_beam1_health
+      until: agentos_beam1_health.status in [200, 301, 302, 303]
+      retries: 24
+      delay: 5
+      when: not ansible_check_mode
+      tags: [agentos, service]
+
+    - name: Start beam-2 (reuses compiled deps/build volumes)
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          up -d --no-deps beam-2
+      become: yes
+      register: agentos_beam2_up
+      changed_when: "'Started' in agentos_beam2_up.stdout or 'Created' in agentos_beam2_up.stdout"
+      tags: [agentos, service]
 
     # --- Datomic Transactor ---
 
