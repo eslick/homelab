@@ -2,10 +2,10 @@
 # Idempotent: register Together AI as a manifest custom provider, add Anthropic,
 # and configure tier routing + fallbacks.
 #
-# Tiers managed here (complex/reasoning only — simple/standard/small/local-advanced
-# are owned by manifest-setup.sh / vLLM and must not be overwritten here):
+# Tiers managed here (complex/reasoning primary; standard fallback only):
 #   complex   → deepseek-ai/DeepSeek-V3.1 @ Together AI  fallback: anthropic/claude-sonnet-4-6
 #   reasoning → deepseek-ai/DeepSeek-V3.1 @ Together AI  fallback: anthropic/claude-sonnet-4-6
+#   standard  → (primary owned by vLLM setup)             fallback: deepseek-ai/DeepSeek-V3.1 @ Together AI
 set -e
 
 DB=/home/node/.openclaw/manifest/manifest.db
@@ -15,7 +15,7 @@ TOGETHER_KEY={{ together_ai_api_key }}
 ANTHROPIC_KEY={{ vault_anthropic_api_key }}
 BASE_URL=https://api.together.xyz/v1
 
-MODELS='[{"model_name":"deepseek-ai/DeepSeek-V3.1","context_window":65536},{"model_name":"moonshotai/Kimi-K2.5","context_window":65536},{"model_name":"openai/gpt-oss-120b","context_window":65536}]'
+MODELS='[{"model_name":"deepseek-ai/DeepSeek-V3.1","context_window":65536},{"model_name":"moonshotai/Kimi-K2.5","context_window":65536}]'
 
 # --- Together AI custom provider ---
 EXISTING_ID=$(sqlite3 "$DB" \
@@ -87,6 +87,16 @@ set_tier() {
   echo "Set $TIER → $MODEL (fallbacks: $FALLBACKS)"
 }
 
+set_fallbacks() {
+  TIER=$1; FALLBACKS=$2
+  wget -qO- --method=PUT \
+    --body-data "{\"models\":$FALLBACKS}" \
+    --header "Content-Type: application/json" \
+    --header "$AUTH" \
+    "$BASE_API/$TIER/fallbacks" > /dev/null 2>&1 || { echo "FAILED fallbacks: $TIER"; return; }
+  echo "Set $TIER fallbacks → $FALLBACKS"
+}
+
 clear_tier() {
   TIER=$1
   wget -qO- --method=DELETE \
@@ -96,6 +106,7 @@ clear_tier() {
 
 set_tier "complex"   "${CP}/deepseek-ai/DeepSeek-V3.1" "${CP}" "[\"anthropic/claude-sonnet-4-6\"]"
 set_tier "reasoning" "${CP}/deepseek-ai/DeepSeek-V3.1" "${CP}" "[\"anthropic/claude-sonnet-4-6\"]"
+set_fallbacks "standard" "[\"${CP}/deepseek-ai/DeepSeek-V3.1\"]"
 
 # Clear tiers not managed by this script or vllm-setup
 for TIER in advanced long-context thinking; do
@@ -116,8 +127,8 @@ if [ -n "$VLLM_ID" ]; then
   echo "Seeded cached_models for vllm provider ($VLLM_ID)"
 fi
 
-TOGETHER_CACHED='[{"id":"deepseek-ai/DeepSeek-V3.1"},{"id":"moonshotai/Kimi-K2.5"},{"id":"openai/gpt-oss-120b"}]'
+TOGETHER_CACHED='[{"id":"deepseek-ai/DeepSeek-V3.1"},{"id":"moonshotai/Kimi-K2.5"}]'
 sqlite3 "$DB" "UPDATE user_providers SET cached_models='$TOGETHER_CACHED', models_fetched_at=datetime('now') WHERE agent_id='$AGENT_ID' AND provider='custom:$PROVIDER_ID';"
 echo "Seeded cached_models for together provider ($PROVIDER_ID)"
 
-echo "Tiers configured: complex/reasoning=DeepSeek-V3.1(fallback:sonnet-4.6)"
+echo "Tiers configured: complex/reasoning=DeepSeek-V3.1(fallback:sonnet-4.6); standard fallback=DeepSeek-V3.1"
