@@ -205,14 +205,14 @@
       changed_when: "'writing image' in agentos_build.stdout"
       tags: [agentos, service]
 
-    - name: Run AgentOS migrations (one-off container, before starting servers)
+    - name: Run AgentOS migrations and seeds (one-off container, before starting servers)
       ansible.builtin.command:
         cmd: >
           docker compose -f {{ compose_base }}/agentos/docker-compose.yml
-          run --rm beam-1 mix ecto.migrate
+          run --rm beam-1 sh -c "mix ecto.migrate && mix run priv/repo/seeds.exs"
       become: yes
       register: agentos_migrate
-      changed_when: "'Migrated' in agentos_migrate.stderr"
+      changed_when: "'Migrated' in agentos_migrate.stderr or 'Created' in agentos_migrate.stdout"
       # CockroachDB DDL auto-commits mid-transaction; Ecto's rollback handler
       # panics with rc=1 even when all migrations succeeded. Treat rc=1 with
       # the known MatchError as a warning, not a hard failure.
