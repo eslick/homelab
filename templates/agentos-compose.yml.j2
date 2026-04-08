@@ -39,6 +39,7 @@ services:
       - {{ agentos_src_path }}:/app
       - deps:/app/deps
       - build:/app/_build
+      - node_modules:/app/assets/node_modules
     ports:
       - "127.0.0.1:{{ agentos_beam1_port }}:4000"
     networks:
@@ -73,6 +74,7 @@ services:
       - {{ agentos_src_path }}:/app
       - deps:/app/deps
       - build:/app/_build
+      - node_modules:/app/assets/node_modules
     ports:
       - "127.0.0.1:{{ agentos_beam2_port }}:4000"
     networks:
@@ -82,6 +84,7 @@ services:
 volumes:
   deps:
   build:
+  node_modules:
 
 networks:
   {{ docker_network }}:

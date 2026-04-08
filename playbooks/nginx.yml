@@ -11,6 +11,7 @@
     agentos_port: 14000
     agentos_beam1_port: 14100
     agentos_beam2_port: 14101
+    agentos_cluster_nodes: 1
 
   tasks:
     - name: Install nginx

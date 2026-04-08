@@ -2,8 +2,10 @@
 # ip_hash ensures LiveView WebSocket connections stay on the node that owns the process.
 upstream agentos {
     ip_hash;
-    server 127.0.0.1:{{ agentos_beam1_port }};
-    server 127.0.0.1:{{ agentos_beam2_port }};
+    # max_fails=0 keeps beam-1 in rotation even if a startup probe fails
+    server 127.0.0.1:{{ agentos_beam1_port }} max_fails=0;
+    # marked `down` when running single-node; remove `down` to re-enable clustering
+    server 127.0.0.1:{{ agentos_beam2_port }}{% if agentos_cluster_nodes | int < 2 %} down{% endif %};
 }
 
 server {
