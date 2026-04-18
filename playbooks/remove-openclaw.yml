@@ -71,6 +71,13 @@
       become: yes
       tags: [openclaw, security]
 
+    - name: Remove OpenClaw host cache directory
+      ansible.builtin.file:
+        path: /opt/cache/openclaw
+        state: absent
+      become: yes
+      tags: [openclaw, cache]
+
   handlers:
     - name: Reload nginx
       ansible.builtin.service:
