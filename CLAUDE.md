@@ -93,3 +93,7 @@ Output: structured markdown to `health-reports/YYYY-MM-DD-HH.md`
 If any alert threshold is exceeded, prefix filename with `ALERT-`
 Then commit: `git add health-reports/ && git commit -m "health: $(date +%Y-%m-%d-%H)" && git push`
 DO NOT run ansible-playbook or make system changes in health check mode.
+
+## Locally Developed Applications from Source
+- Are stored in projects/<project>
+- Must be deployed using ansible and docker-compose unless specified otherwise

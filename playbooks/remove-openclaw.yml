@@ -1,0 +1,79 @@
+---
+# Removes the OpenClaw container, image, nginx config, and UFW rules.
+# Intentionally preserves:
+#   - Docker named volume: openclaw-data  (/home/node/.openclaw inside container)
+#   - Host cache dir:      /opt/cache/openclaw
+#   - Repo templates/files (for potential future re-deploy)
+#
+# To re-deploy later: ansible-playbook playbooks/docker.yml --tags openclaw
+
+- name: Remove OpenClaw installation (preserve data volume)
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    openclaw_port: 18789
+    tailscale_hostname: speedracer.terrier-haddock.ts.net
+
+  tasks:
+
+    - name: Stop and remove OpenClaw container (keep volumes)
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/openclaw"
+        state: absent
+        remove_volumes: false
+      become: yes
+      tags: [openclaw, service]
+
+    - name: Remove OpenClaw built image
+      community.docker.docker_image:
+        name: openclaw-gateway
+        tag: local
+        state: absent
+        force_absent: true
+      become: yes
+      tags: [openclaw, service]
+
+    - name: Remove OpenClaw compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/openclaw"
+        state: absent
+      become: yes
+      tags: [openclaw, configure]
+
+    - name: Disable nginx site for OpenClaw (remove symlink)
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/openclaw
+        state: absent
+      become: yes
+      notify: Reload nginx
+      tags: [openclaw, configure]
+
+    - name: Remove nginx site config for OpenClaw
+      ansible.builtin.file:
+        path: /etc/nginx/sites-available/openclaw
+        state: absent
+      become: yes
+      notify: Reload nginx
+      tags: [openclaw, configure]
+
+    - name: Remove UFW rules for OpenClaw ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+        delete: true
+      loop:
+        - "{{ openclaw_port }}"
+        - "2099"
+        - "2100"
+      become: yes
+      tags: [openclaw, security]
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+      become: yes
