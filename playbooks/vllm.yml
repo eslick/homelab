@@ -11,9 +11,9 @@
 #   reasoning      → together / moonshotai/Kimi-K2.5               (reasoning)
 #   thinking       → openai / o4-mini                              (reasoning)
 #
-# VRAM budget (RTX 3090, 24 GB):
-#   AWQ-4bit weights ~13 GB, gpu-memory-utilization capped at 0.85 (20.4 GB usable).
-#   vLLM auto-fits KV cache into remaining ~7 GB. max-model-len=32768 limits context.
+# VRAM budget (2× RTX 3090, 24 GB each, tensor-parallel-size 2):
+#   AWQ-4bit weights ~13 GB split across both GPUs (~6.5 GB/card), leaving ~15 GB/card for KV cache.
+#   max-model-len=65536 exploits the extra headroom. gpu-memory-utilization capped at 0.90 per card.
 #   DO NOT raise gpu-memory-utilization above 0.90 without checking nvidia-smi headroom.
 
 - name: Deploy vLLM GPU container
@@ -28,8 +28,9 @@
     vllm_port: 8081
     vllm_model_id: "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
     vllm_served_model_name: "gemma-4"
-    vllm_max_model_len: 32768          # 32k context; KV cache auto-sized within VRAM budget
-    vllm_gpu_memory_fraction: "0.90"   # cap at 90% of 24 GB = 21.6 GB; headroom for CUDA graphs
+    vllm_tensor_parallel_size: 2       # both RTX 3090s; NVLink not required for AWQ-Marlin
+    vllm_max_model_len: 65536          # 64k context; 2x VRAM (2×21.6 GB) gives headroom for larger KV cache
+    vllm_gpu_memory_fraction: "0.90"   # 90% of each GPU's 24 GB = 21.6 GB per card
 
   tasks:
 

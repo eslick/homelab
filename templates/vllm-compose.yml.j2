@@ -10,7 +10,7 @@ services:
     command: >
       --model {{ vllm_model_id }}
       --served-model-name gemma-4
-      --tensor-parallel-size 1
+      --tensor-parallel-size {{ vllm_tensor_parallel_size }}
       --gpu-memory-utilization {{ vllm_gpu_memory_fraction }}
       --max-model-len {{ vllm_max_model_len }}
       --dtype auto
@@ -26,14 +26,14 @@ services:
       - vllm-models:/root/.cache/huggingface
     networks:
       - {{ docker_network }}
-    shm_size: "1g"
+    shm_size: "4g"
     restart: unless-stopped
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: all
               capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]

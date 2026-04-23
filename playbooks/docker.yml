@@ -15,8 +15,6 @@
     docker_network: homelab-net
 
     services:
-      - name: openclaw
-        ports: [18789, 2099]
       - name: cockroachdb
         ports: [26257, 8090]
       - name: minio
@@ -31,19 +29,6 @@
     # Secrets store (not synced — credentials, tokens)
     secrets_path: /opt/secrets
     tailscale_hostname: speedracer.terrier-haddock.ts.net
-
-    # OpenClaw
-    openclaw_port: 18789
-    openclaw_tz: "America/New_York"
-    openclaw_gateway_token: "{{ vault_openclaw_gateway_token }}"
-    anthropic_api_key: "{{ vault_anthropic_api_key }}"
-    openai_api_key: "{{ vault_openai_api_key | default('') }}"
-    together_api_key: "{{ together_ai_api_key | default('') }}"
-
-    # vLLM (model router backend)
-    vllm_model_id: "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
-    vllm_served_model_name: "gemma-4"
-    vllm_max_model_len: 32768
 
     # CockroachDB
     cockroachdb_sql_port: 26257
@@ -295,339 +280,45 @@
       become: yes
       tags: [docker, service]
 
-    # --- OpenClaw Gateway ---
+    # --- OpenClaw Gateway (removed) ---
 
-    - name: Deploy OpenClaw Dockerfile
-      ansible.builtin.template:
-        src: "../templates/openclaw-Dockerfile.j2"
-        dest: "{{ compose_base }}/openclaw/Dockerfile"
-        mode: '0644'
-      become: yes
-      tags: [openclaw, configure]
-
-    - name: Create secrets directory
-      ansible.builtin.file:
-        path: "{{ secrets_path }}"
-        state: directory
-        mode: '0700'
-        owner: eslick
-        group: eslick
-      become: yes
-      tags: [openclaw, configure]
-
-    - name: Create Google OAuth credentials directory under secrets
-      ansible.builtin.file:
-        path: "{{ secrets_path }}/google"
-        state: directory
-        mode: '0700'
-        owner: eslick
-        group: eslick
-      become: yes
-      tags: [openclaw, configure]
-
-    - name: Remove Google OAuth credentials from Obsidian vault (was synced via Syncthing)
-      ansible.builtin.file:
-        path: "{{ vault_path }}/google"
-        state: absent
-      become: yes
-      tags: [openclaw, configure]
-
-    - name: Deploy OpenClaw entrypoint wrapper
-      ansible.builtin.copy:
-        src: "../files/openclaw-entrypoint.sh"
-        dest: "{{ compose_base }}/openclaw/openclaw-entrypoint.sh"
-        mode: '0755'
-      become: yes
-      tags: [openclaw, configure]
-
-    - name: Create OpenClaw model cache directory on host
-      ansible.builtin.file:
-        path: /opt/cache/openclaw
-        state: directory
-        owner: eslick
-        group: eslick
-        mode: '0755'
-      become: yes
-      tags: [openclaw, configure]
-
-    - name: Build OpenClaw image
-      ansible.builtin.command:
-        cmd: docker compose -f {{ compose_base }}/openclaw/docker-compose.yml build
-      become: yes
-      register: openclaw_build_result
-      changed_when: "'writing image' in openclaw_build_result.stdout"
-      tags: [openclaw, service]
-
-    - name: Start OpenClaw
+    - name: Stop and remove openclaw container (keep data volume)
       community.docker.docker_compose_v2:
         project_src: "{{ compose_base }}/openclaw"
-        state: present
+        state: absent
+        remove_volumes: false
       become: yes
-      tags: [openclaw, service]
-
-    - name: Fix OpenClaw data volume ownership
-      ansible.builtin.command:
-        cmd: docker exec openclaw-gateway chown -R node:node /home/node/.openclaw
-      become: yes
-      changed_when: false
-      tags: [docker, configure]
-
-    - name: Set OpenClaw gateway to bind on LAN interface
-      ansible.builtin.command:
-        cmd: docker exec openclaw-gateway openclaw config set gateway.bind lan
-      become: yes
-      register: openclaw_bind_result
-      changed_when: "'Updated' in openclaw_bind_result.stdout"
-      tags: [docker, configure]
-
-    - name: Install or update Manifest plugin to latest
-      ansible.builtin.command:
-        argv:
-          - docker
-          - exec
-          - openclaw-gateway
-          - sh
-          - -c
-          - >
-            openclaw plugins list 2>/dev/null | grep -q '^.*manifest' &&
-            openclaw plugins update manifest ||
-            openclaw plugins install manifest
-      become: yes
-      register: openclaw_manifest_install_result
-      changed_when: >
-        'Installed' in openclaw_manifest_install_result.stdout or
-        'Updated' in openclaw_manifest_install_result.stdout
-      tags: [openclaw, configure]
-
-    - name: Configure manifest plugin to bind on all interfaces
-      ansible.builtin.command:
-        argv:
-          - docker
-          - exec
-          - openclaw-gateway
-          - openclaw
-          - config
-          - set
-          - plugins.entries.manifest.config.host
-          - "0.0.0.0"
-      become: yes
-      register: openclaw_manifest_host_result
-      changed_when: "'Updated' in openclaw_manifest_host_result.stdout"
-      tags: [docker, configure]
-
-    - name: Allow OpenClaw control UI from Tailscale origin
-      ansible.builtin.command:
-        argv:
-          - docker
-          - exec
-          - openclaw-gateway
-          - openclaw
-          - config
-          - set
-          - gateway.controlUi.allowedOrigins
-          - '["https://speedracer.terrier-haddock.ts.net","https://speedracer.terrier-haddock.ts.net:{{ openclaw_port }}"]'
-      become: yes
-      register: openclaw_origins_result
-      changed_when: "'Updated' in openclaw_origins_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Register google-workspace-vr MCP server
-      ansible.builtin.command:
-        argv:
-          - docker
-          - exec
-          - openclaw-gateway
-          - openclaw
-          - mcp
-          - set
-          - google-workspace-vr
-          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/secrets/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/secrets/google/token-vr.json"}}'
-      become: yes
-      register: openclaw_mcp_vr_result
-      changed_when: "'Updated' in openclaw_mcp_vr_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Register google-workspace-gmail MCP server
-      ansible.builtin.command:
-        argv:
-          - docker
-          - exec
-          - openclaw-gateway
-          - openclaw
-          - mcp
-          - set
-          - google-workspace-gmail
-          - '{"command":"mcp-google","env":{"GOOGLE_OAUTH_CREDENTIALS":"/secrets/google/credentials.json","GOOGLE_CALENDAR_MCP_TOKEN_PATH":"/secrets/google/token-gmail.json"}}'
-      become: yes
-      register: openclaw_mcp_gmail_result
-      changed_when: "'Updated' in openclaw_mcp_gmail_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Register QMD MCP server (BM25 search, no reranking)
-      ansible.builtin.command:
-        argv:
-          - docker
-          - exec
-          - openclaw-gateway
-          - openclaw
-          - mcp
-          - set
-          - qmd
-          - '{"command":"qmd","args":["mcp","--no-rerank"]}'
-      become: yes
-      register: openclaw_mcp_qmd_result
-      changed_when: "'Updated' in openclaw_mcp_qmd_result.stdout or 'Saved' in openclaw_mcp_qmd_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Add Obsidian vault as QMD collection (idempotent)
-      ansible.builtin.command:
-        argv:
-          - docker
-          - exec
-          - openclaw-gateway
-          - qmd
-          - collection
-          - add
-          - /vault
-      become: yes
-      register: openclaw_qmd_collection_result
-      changed_when: "'created' in openclaw_qmd_collection_result.stdout"
       failed_when: false
-      tags: [openclaw, configure]
+      tags: [openclaw, cleanup]
 
-    - name: Configure Manifest provider
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: >
-          node dist/index.js config set models.providers.manifest
-          '{"baseUrl":"http://127.0.0.1:2099/v1","api":"openai-completions","apiKey":"{{ manifest_api_key }}","models":[{"id":"auto","name":"Manifest Auto","contextWindow":32768,"maxTokens":2048}]}'
+    - name: Remove openclaw compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/openclaw"
+        state: absent
       become: yes
-      register: openclaw_manifest_provider_result
-      changed_when: "'Updated' in openclaw_manifest_provider_result.stdout"
-      tags: [openclaw, configure]
+      tags: [openclaw, cleanup]
 
-    - name: Set default model to manifest/auto
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js models set manifest/auto
+    - name: Remove openclaw model cache directory
+      ansible.builtin.file:
+        path: /opt/cache/openclaw
+        state: absent
       become: yes
-      register: openclaw_default_model_result
-      changed_when: "'manifest/auto' in openclaw_default_model_result.stdout"
-      tags: [openclaw, configure]
+      tags: [openclaw, cleanup]
 
-    - name: Set compaction threshold (22000 = triggers early, falls back to gpt-oss at limit)
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.contextTokens 22000 --strict-json
+    - name: Remove UFW allow rule for openclaw gateway port
+      community.general.ufw:
+        rule: allow
+        port: '18789'
+        proto: tcp
+        delete: yes
       become: yes
-      register: openclaw_context_tokens_result
-      changed_when: "'Updated' in openclaw_context_tokens_result.stdout"
-      tags: [openclaw, configure]
+      tags: [openclaw, cleanup, security]
 
-    - name: Reserve tokens for system prompt during compaction
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.reserveTokens 8192 --strict-json
+    - name: Remove UFW allow rule for openclaw manifest port
+      community.general.ufw:
+        rule: allow
+        port: '2099'
+        proto: tcp
+        delete: yes
       become: yes
-      register: openclaw_reserve_tokens_result
-      changed_when: "'Updated' in openclaw_reserve_tokens_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Keep last 4096 tokens verbatim after compaction
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.keepRecentTokens 4096 --strict-json
-      become: yes
-      register: openclaw_keep_recent_result
-      changed_when: "'Updated' in openclaw_keep_recent_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Preserve last 4 turns intact through compaction
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.recentTurnsPreserve 4 --strict-json
-      become: yes
-      register: openclaw_recent_turns_result
-      changed_when: "'Updated' in openclaw_recent_turns_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Set compaction model to DeepSeek-V3.1 via Together AI custom provider
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.compaction.model custom:2a30b0c0-132f-492d-a914-3bb275990ebc/deepseek-ai/DeepSeek-V3.1
-      become: yes
-      register: openclaw_compaction_model_result
-      changed_when: "'Updated' in openclaw_compaction_model_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Set LLM idle timeout to 300s (local inference prefill can be slow)
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: node dist/index.js config set agents.defaults.llm.idleTimeoutSeconds 300 --strict-json
-      become: yes
-      register: openclaw_llm_timeout_result
-      changed_when: "'Updated' in openclaw_llm_timeout_result.stdout"
-      tags: [openclaw, configure]
-
-    - name: Render vLLM manifest setup script to host
-      ansible.builtin.template:
-        src: ../templates/manifest-vllm-setup.sh.j2
-        dest: /tmp/manifest-vllm-setup.sh
-        mode: '0700'
-      tags: [openclaw, configure, manifest]
-
-    - name: Copy vLLM setup script into openclaw-gateway persistent volume
-      ansible.builtin.command:
-        cmd: docker cp /tmp/manifest-vllm-setup.sh openclaw-gateway:/home/node/.openclaw/manifest-setup.sh
-      become: yes
-      changed_when: false
-      tags: [openclaw, configure, manifest]
-
-    - name: Register vLLM custom provider and configure tier routing
-      ansible.builtin.command:
-        cmd: docker exec openclaw-gateway sh /home/node/.openclaw/manifest-setup.sh
-      become: yes
-      register: manifest_vllm_result
-      changed_when: "'Created' in manifest_vllm_result.stdout"
-      tags: [openclaw, configure, manifest]
-
-    - name: Copy tool discipline patch into openclaw-gateway workspace
-      ansible.builtin.command:
-        cmd: docker cp {{ playbook_dir }}/../files/openclaw-workspace-agents-patch.md openclaw-gateway:/tmp/agents-patch.md
-      become: yes
-      changed_when: false
-      tags: [openclaw, configure, workspace]
-
-    - name: Inject tool discipline into AGENTS.md if not already present
-      community.docker.docker_container_exec:
-        container: openclaw-gateway
-        command: >
-          sh -c 'if ! grep -q "Tool Discipline" /home/node/.openclaw/workspace/AGENTS.md; then
-            cat /tmp/agents-patch.md >> /home/node/.openclaw/workspace/AGENTS.md;
-            echo "Patched"; else echo "Already present"; fi'
-      become: yes
-      register: openclaw_agents_patch_result
-      changed_when: "'Patched' in openclaw_agents_patch_result.stdout"
-      tags: [openclaw, configure, workspace]
-
-    - name: Render Together AI manifest setup script to host
-      ansible.builtin.template:
-        src: ../templates/manifest-together-setup.sh.j2
-        dest: /tmp/manifest-together-setup.sh
-        mode: '0700'
-      tags: [openclaw, configure, manifest]
-
-    - name: Copy Together AI setup script into openclaw-gateway persistent volume
-      ansible.builtin.command:
-        cmd: docker cp /tmp/manifest-together-setup.sh openclaw-gateway:/home/node/.openclaw/manifest-together-setup.sh
-      become: yes
-      changed_when: false
-      tags: [openclaw, configure, manifest]
-
-    - name: Register Together AI provider and configure complex/reasoning tier routing
-      ansible.builtin.command:
-        cmd: docker exec openclaw-gateway sh /home/node/.openclaw/manifest-together-setup.sh
-      become: yes
-      register: manifest_together_result
-      changed_when: "'Created' in manifest_together_result.stdout"
-      tags: [openclaw, configure, manifest]
+      tags: [openclaw, cleanup, security]
