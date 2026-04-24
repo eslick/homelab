@@ -7,21 +7,17 @@ services:
     environment:
       - HF_TOKEN={{ hugging_face_token }}
       - HUGGING_FACE_HUB_TOKEN={{ hugging_face_token }}
-    # SGLang uses python -m sglang.launch_server (not a CLI entrypoint like vLLM)
-    entrypoint: []
     command: >
-      python3 -m sglang.launch_server
-      --model-path {{ sglang_model_id }}
+      sglang serve {{ sglang_model_id }}
       --served-model-name {{ sglang_served_model_name }}
       --tp {{ sglang_tensor_parallel_size }}
       --mem-fraction-static {{ sglang_gpu_memory_fraction }}
       --context-length {{ sglang_max_model_len }}
       --kv-cache-dtype {{ sglang_kv_cache_dtype }}
-      --host 0.0.0.0
-      --port 30000
+      --host 0.0.0.0 --port 30000
       {{ sglang_extra_args | default('') }}
     volumes:
-      - sglang-models:/root/.cache/huggingface
+      - vllm-models:/root/.cache/huggingface  # share HF cache with vLLM to avoid re-downloading
     networks:
       - {{ docker_network }}
     shm_size: "4g"
@@ -41,7 +37,8 @@ services:
       start_period: 300s
 
 volumes:
-  sglang-models:
+  vllm-models:
+    external: true  # shared with vLLM container
 
 networks:
   {{ docker_network }}:
