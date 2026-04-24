@@ -4,6 +4,33 @@
   gather_facts: yes
 
   tasks:
+    - name: Assert GitHub SSH key exists (restore from backup if missing)
+      ansible.builtin.stat:
+        path: /home/eslick/.ssh/id_rsa_git
+      register: github_key
+      tags: [configure, ssh]
+
+    - name: Fail with restore instructions if GitHub SSH key is missing
+      ansible.builtin.fail:
+        msg: >
+          ~/.ssh/id_rsa_git is missing. Restore it from:
+            restic -r /mnt/nas/backups/homelab restore latest --target / --include /home/eslick/.ssh/id_rsa_git
+          Then re-run this playbook.
+      when: not github_key.stat.exists
+      tags: [configure, ssh]
+
+    - name: Configure SSH to use id_rsa_git for GitHub
+      ansible.builtin.copy:
+        dest: /home/eslick/.ssh/config
+        content: |
+          Host github.com
+              IdentityFile ~/.ssh/id_rsa_git
+              IdentitiesOnly yes
+        mode: '0600'
+        owner: eslick
+        group: eslick
+      tags: [configure, ssh]
+
     - name: Ensure essential packages are installed
       ansible.builtin.apt:
         name:
