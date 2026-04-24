@@ -285,6 +285,32 @@
       become: yes
       tags: [configure, claude]
 
+    - name: Install lm-sensors for CPU temperature monitoring
+      ansible.builtin.apt:
+        name: lm-sensors
+        state: present
+        update_cache: no
+      become: yes
+      tags: [install, monitoring]
+
+    - name: Ensure /var/log/homelab directory exists
+      ansible.builtin.file:
+        path: /var/log/homelab
+        state: directory
+        mode: '0755'
+        owner: eslick
+        group: eslick
+      become: yes
+      tags: [configure, monitoring]
+
+    - name: Deploy check-temps script
+      ansible.builtin.copy:
+        src: ../files/check-temps.sh
+        dest: /usr/local/bin/check-temps
+        mode: '0755'
+      become: yes
+      tags: [configure, monitoring]
+
   handlers:
     - name: Restart avahi
       ansible.builtin.service:
