@@ -2,9 +2,14 @@
 # Deploys vLLM inference server on dual RTX 3090 (TP=2).
 #
 # VRAM budget (2× RTX 3090, 24 GB each, tensor-parallel-size 2):
-#   AWQ-4bit weights ~13 GB split across both GPUs (~6.5 GB/card), leaving ~15 GB/card for KV cache.
-#   max-model-len=65536 exploits the extra headroom. gpu-memory-utilization capped at 0.90 per card.
+#   Gemma 4 26B AWQ-4bit weights ~14-16 GB total (~7-8 GB/card), ~16-17 GB/card for KV cache.
+#   fp8 KV cache halves KV memory; max-model-len=65536 conservative — probe shows true ceiling.
 #   DO NOT raise gpu-memory-utilization above 0.90 without checking nvidia-smi headroom.
+#
+# Model options (override with -e):
+#   Gemma 4 27B:   vllm_model_id=cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  vllm_served_model_name=gemma4-27b   vllm_image=vllm/vllm-openai:gemma4
+#   Qwen3-30B:     vllm_model_id=QuixiAI/Qwen3-30B-A3B-AWQ             vllm_served_model_name=qwen3-30b-a3b  vllm_image=vllm/vllm-openai:gemma4
+#   gpt-oss-20b:   vllm_model_id=openai/gpt-oss-20b                    vllm_served_model_name=gpt-oss-20b    vllm_image=vllm/vllm-openai:latest  vllm_max_model_len=32768
 
 - name: Deploy vLLM GPU container
   hosts: homelab
@@ -16,10 +21,11 @@
     docker_bridge_subnet: 172.18.0.0/16
 
     vllm_port: 8081
-    vllm_model_id: "QuixiAI/Qwen3-30B-A3B-AWQ"
-    vllm_served_model_name: "qwen3-30b-a3b"
+    vllm_image: "vllm/vllm-openai:gemma4"
+    vllm_model_id: "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
+    vllm_served_model_name: "gemma4-27b"
     vllm_tensor_parallel_size: 2
-    vllm_max_model_len: 32768
+    vllm_max_model_len: 65536
     vllm_gpu_memory_fraction: "0.90"
     vllm_kv_cache_dtype: "fp8"         # fp8 halves KV memory; set to "auto" (BF16) to disable
     vllm_extra_args: "--max-num-seqs 32"  # cap warmup footprint for fp8 KV + FlashInfer combo

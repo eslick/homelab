@@ -8,15 +8,15 @@
 #   docker compose -f /opt/compose/sglang/docker-compose.yml down
 #   ansible-playbook playbooks/vllm.yml --tags docker
 #
-# Model options:
-#   qwen3.6  → QuantTrio/Qwen3.6-35B-A3B-AWQ  (35B total / 3B active MoE, 262k ctx)
-#   qwen3    → QuixiAI/Qwen3-30B-A3B-AWQ      (30B total / 3B active MoE, 128k ctx)
-#   gemma4   → cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  (multimodal, use gemma4 image)
+# Model options (override with -e):
+#   Gemma 4 27B:  sglang_model_id=cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  sglang_served_model_name=gemma4-27b   sglang_image=lmsysorg/sglang:gemma4
+#   Qwen3.6-35B:  sglang_model_id=QuantTrio/Qwen3.6-35B-A3B-AWQ         sglang_served_model_name=qwen3.6-35b-a3b  sglang_image=lmsysorg/sglang:v0.5.10.post1
+#   Qwen3-30B:    sglang_model_id=QuixiAI/Qwen3-30B-A3B-AWQ             sglang_served_model_name=qwen3-30b-a3b    sglang_image=lmsysorg/sglang:v0.5.10.post1
 #
 # VRAM budget (2× RTX 3090, 24 GB each, TP=2):
-#   Qwen3.6-35B AWQ-4bit weights: ~17.5 GB across both cards (~8.75 GB/card)
-#   fp8_e4m3 KV cache: ~30 GB effective KV budget per card
-#   context-length=65536 is conservative; 128k feasible with fp8 KV.
+#   Gemma 4 26B AWQ-4bit weights: ~14-16 GB total (~7-8 GB/card), ~16-17 GB/card for KV cache.
+#   fp8_e4m3 KV cache: effective ~32 GB KV budget across both cards.
+#   context-length=65536 is conservative; probe-context mode finds the true ceiling.
 
 - name: Deploy SGLang GPU container
   hosts: homelab
@@ -27,9 +27,9 @@
     docker_network: homelab-net
 
     sglang_port: 8082
-    sglang_image: "lmsysorg/sglang:v0.5.10.post1"   # use "lmsysorg/sglang:gemma4" for Gemma 4
-    sglang_model_id: "QuantTrio/Qwen3.6-35B-A3B-AWQ"
-    sglang_served_model_name: "qwen3.6-35b-a3b"
+    sglang_image: "lmsysorg/sglang:gemma4"
+    sglang_model_id: "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
+    sglang_served_model_name: "gemma4-27b"
     sglang_tensor_parallel_size: 2
     sglang_max_model_len: 65536         # fp8 KV gives headroom; native max is 262k
     sglang_gpu_memory_fraction: "0.90"

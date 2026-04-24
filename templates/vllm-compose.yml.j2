@@ -1,6 +1,6 @@
 services:
   vllm:
-    image: "vllm/vllm-openai:gemma4"
+    image: "{{ vllm_image }}"
     container_name: vllm
     ports:
       - "127.0.0.1:{{ vllm_port }}:8000"

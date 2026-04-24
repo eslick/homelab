@@ -8,7 +8,7 @@ services:
       - HF_TOKEN={{ hugging_face_token }}
       - HUGGING_FACE_HUB_TOKEN={{ hugging_face_token }}
     command: >
-      sglang serve {{ sglang_model_id }}
+      sglang serve --model-path {{ sglang_model_id }}
       --served-model-name {{ sglang_served_model_name }}
       --tp {{ sglang_tensor_parallel_size }}
       --mem-fraction-static {{ sglang_gpu_memory_fraction }}
