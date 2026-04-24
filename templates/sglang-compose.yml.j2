@@ -1,0 +1,48 @@
+services:
+  sglang:
+    image: "{{ sglang_image }}"
+    container_name: sglang
+    ports:
+      - "127.0.0.1:{{ sglang_port }}:30000"
+    environment:
+      - HF_TOKEN={{ hugging_face_token }}
+      - HUGGING_FACE_HUB_TOKEN={{ hugging_face_token }}
+    # SGLang uses python -m sglang.launch_server (not a CLI entrypoint like vLLM)
+    entrypoint: []
+    command: >
+      python3 -m sglang.launch_server
+      --model-path {{ sglang_model_id }}
+      --served-model-name {{ sglang_served_model_name }}
+      --tp {{ sglang_tensor_parallel_size }}
+      --mem-fraction-static {{ sglang_gpu_memory_fraction }}
+      --context-length {{ sglang_max_model_len }}
+      --kv-cache-dtype {{ sglang_kv_cache_dtype }}
+      --host 0.0.0.0
+      --port 30000
+      {{ sglang_extra_args | default('') }}
+    volumes:
+      - sglang-models:/root/.cache/huggingface
+    networks:
+      - {{ docker_network }}
+    shm_size: "4g"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:30000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+
+volumes:
+  sglang-models:
+
+networks:
+  {{ docker_network }}:
+    external: true

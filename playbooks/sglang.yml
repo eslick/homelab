@@ -1,0 +1,104 @@
+---
+# Deploys SGLang inference server as an alternative to vLLM.
+#
+# IMPORTANT: SGLang and vLLM both claim all GPUs (count: all).
+# Stop vLLM before starting SGLang:
+#   docker compose -f /opt/compose/vllm/docker-compose.yml down
+# Swap back to vLLM:
+#   docker compose -f /opt/compose/sglang/docker-compose.yml down
+#   ansible-playbook playbooks/vllm.yml --tags docker
+#
+# Model options:
+#   qwen3.6  → QuantTrio/Qwen3.6-35B-A3B-AWQ  (35B total / 3B active MoE, 262k ctx)
+#   qwen3    → QuixiAI/Qwen3-30B-A3B-AWQ      (30B total / 3B active MoE, 128k ctx)
+#   gemma4   → cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  (multimodal, use gemma4 image)
+#
+# VRAM budget (2× RTX 3090, 24 GB each, TP=2):
+#   Qwen3.6-35B AWQ-4bit weights: ~17.5 GB across both cards (~8.75 GB/card)
+#   fp8_e4m3 KV cache: ~30 GB effective KV budget per card
+#   context-length=65536 is conservative; 128k feasible with fp8 KV.
+
+- name: Deploy SGLang GPU container
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    docker_network: homelab-net
+
+    sglang_port: 8082
+    sglang_image: "lmsysorg/sglang:v0.5.10.post1"   # use "lmsysorg/sglang:gemma4" for Gemma 4
+    sglang_model_id: "QuantTrio/Qwen3.6-35B-A3B-AWQ"
+    sglang_served_model_name: "qwen3.6-35b-a3b"
+    sglang_tensor_parallel_size: 2
+    sglang_max_model_len: 65536         # fp8 KV gives headroom; native max is 262k
+    sglang_gpu_memory_fraction: "0.90"
+    sglang_kv_cache_dtype: "fp8_e4m3"  # fp8 KV halves memory; use "auto" to disable
+    sglang_extra_args: ""
+
+  tasks:
+
+    - name: Ensure vLLM is stopped (SGLang needs exclusive GPU access)
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/vllm"
+        state: absent
+      become: yes
+      ignore_errors: yes  # vLLM may not be deployed
+      tags: [docker, sglang]
+
+    - name: Create SGLang compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/sglang"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [install, sglang]
+
+    - name: Deploy SGLang compose file from template
+      ansible.builtin.template:
+        src: ../templates/sglang-compose.yml.j2
+        dest: "{{ compose_base }}/sglang/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [configure, sglang]
+
+    - name: Pull SGLang image
+      community.docker.docker_image:
+        name: "{{ sglang_image }}"
+        source: pull
+        force_source: no
+      become: yes
+      tags: [docker, sglang]
+
+    - name: Start SGLang container
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/sglang"
+        state: present
+      become: yes
+      tags: [docker, sglang]
+
+    - name: Allow SGLang port from localhost
+      community.general.ufw:
+        rule: allow
+        port: "{{ sglang_port }}"
+        proto: tcp
+        from_ip: 127.0.0.1
+      become: yes
+      tags: [security, sglang]
+
+    - name: Allow SGLang port from Docker bridge subnet
+      community.general.ufw:
+        rule: allow
+        port: "{{ sglang_port }}"
+        proto: tcp
+        from_ip: "{{ docker_network_subnet | default('172.18.0.0/16') }}"
+      become: yes
+      tags: [security, sglang]
+
+    - name: Deny SGLang port from everywhere else
+      community.general.ufw:
+        rule: deny
+        port: "{{ sglang_port }}"
+        proto: tcp
+      become: yes
+      tags: [security, sglang]

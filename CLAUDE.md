@@ -87,7 +87,8 @@ When invoked via `claude -p` in health check mode, perform these checks and ONLY
 3. Docker containers: report any not in 'running' or 'healthy' state
 4. Restic last snapshot: alert if most recent is >25 hours old
 5. Failed systemd units: `systemctl --failed --no-pager`
-6. Pending security updates: `apt list --upgradable 2>/dev/null | grep -i security`.
+6. Pending security updates: `apt list --upgradable 2>/dev/null | grep -i security`
+7. GPU & CPU temperatures: alert if any GPU ≥ 85°C or CPU ≥ 85°C; note trend direction from recent readings (rising/stable/falling); data provided by `check-temps` in the system data block
 
 Output: structured markdown to `health-reports/YYYY-MM-DD-HH.md`
 If any alert threshold is exceeded, prefix filename with `ALERT-`

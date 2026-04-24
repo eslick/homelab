@@ -7,7 +7,6 @@
     tailscale_hostname: speedracer.terrier-haddock.ts.net
     tailscale_ip: "{{ ansible_tailscale0.ipv4.address }}"
     cert_dir: /etc/ssl/tailscale
-    openclaw_port: 18789
     agentos_port: 14000
     agentos_beam1_port: 14100
     agentos_beam2_port: 14101
@@ -56,23 +55,15 @@
       when: not ansible_check_mode
       tags: [configure, tls]
 
-    - name: Deploy nginx site config for OpenClaw
-      ansible.builtin.template:
-        src: ../templates/openclaw-nginx.conf.j2
-        dest: /etc/nginx/sites-available/openclaw
-        mode: '0644'
-      become: yes
-      notify: Reload nginx
-      tags: [configure]
-
-    - name: Enable nginx site for OpenClaw
+    - name: Remove OpenClaw nginx site (decommissioned)
       ansible.builtin.file:
-        src: /etc/nginx/sites-available/openclaw
-        dest: /etc/nginx/sites-enabled/openclaw
-        state: link
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx/sites-enabled/openclaw
+        - /etc/nginx/sites-available/openclaw
       become: yes
       notify: Reload nginx
-      when: not ansible_check_mode
       tags: [configure]
 
     - name: Deploy nginx site config for AgentOS
@@ -167,7 +158,6 @@
         port: '{{ item }}'
         proto: tcp
       loop:
-        - '{{ openclaw_port }}'
         - '2099'
         - '{{ agentos_port }}'
       become: yes

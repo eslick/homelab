@@ -41,3 +41,7 @@ echo "## Pending Security Updates"
 echo '```'
 apt list --upgradable 2>/dev/null | grep -i security || echo "none"
 echo '```'
+echo ""
+
+/usr/local/bin/check-temps 2>/dev/null || echo "## GPU & CPU Temperatures
+check-temps not available"
