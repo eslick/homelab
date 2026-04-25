@@ -11,6 +11,8 @@
     agentos_beam1_port: 14100
     agentos_beam2_port: 14101
     agentos_cluster_nodes: 1
+    vllm_port: 8081
+    vllm_nginx_port: 8082
 
   tasks:
     - name: Install nginx
@@ -84,6 +86,25 @@
       notify: Reload nginx
       when: not ansible_check_mode
       tags: [configure]
+
+    - name: Deploy nginx site config for vLLM
+      ansible.builtin.template:
+        src: ../templates/vllm-nginx.conf.j2
+        dest: /etc/nginx/sites-available/vllm
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, vllm]
+
+    - name: Enable nginx site for vLLM
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/vllm
+        dest: /etc/nginx/sites-enabled/vllm
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, vllm]
 
     - name: Remove Obsidian CouchDB nginx site (decommissioned)
       ansible.builtin.file:
@@ -160,6 +181,7 @@
       loop:
         - '2099'
         - '{{ agentos_port }}'
+        - '{{ vllm_nginx_port }}'
       become: yes
       tags: [security]
 
