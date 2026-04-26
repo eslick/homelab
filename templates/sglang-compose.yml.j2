@@ -18,6 +18,9 @@ services:
       {{ sglang_extra_args | default('') }}
     volumes:
       - vllm-models:/root/.cache/huggingface  # share HF cache with vLLM to avoid re-downloading
+{% if sglang_awq_patch | default(false) %}
+      - /opt/sglang-patches/awq.py:/sgl-workspace/sglang/python/sglang/srt/layers/quantization/awq.py:ro
+{% endif %}
     networks:
       - {{ docker_network }}
     shm_size: "4g"
