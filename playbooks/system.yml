@@ -284,7 +284,8 @@
 
     - name: Install Claude Code (native installer, user-space)
       ansible.builtin.shell:
-        cmd: curl -fsSL https://claude.ai/install.sh | sh
+        cmd: curl -fsSL https://claude.ai/install.sh | bash
+        executable: /bin/bash
         creates: /home/eslick/.local/bin/claude
       become: yes
       become_user: eslick
