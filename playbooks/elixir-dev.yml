@@ -15,9 +15,9 @@
     asdf_dir: "/home/{{ dev_user }}/.asdf"
     asdf_sh: "/home/{{ dev_user }}/.asdf/asdf.sh"
     # OTP version (asdf-erlang uses Erlang/OTP release numbering)
-    erlang_version: "27.2"
+    erlang_version: "28.2"
     # asdf-elixir appends -otp-NN to match OTP major version
-    elixir_version: "1.18.3-otp-27"
+    elixir_version: "1.19.5-otp-28"
 
   tasks:
     # --- Build dependencies ---

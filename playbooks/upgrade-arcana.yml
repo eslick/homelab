@@ -22,7 +22,7 @@
     compose_base: /opt/compose
     arcana_src_path: /home/eslick/homelab/projects/arcana
     arcana_beam1_port: 14100
-    readiness_url: "http://127.0.0.1:{{ arcana_beam1_port }}/api/readiness"
+    readiness_url: "http://127.0.0.1:{{ arcana_beam1_port }}/api/v1/readiness"
     drain_timeout_minutes: 10   # max wait for active agents to finish
     force_rebuild: false        # set true to rebuild even if no tracked files changed
 
