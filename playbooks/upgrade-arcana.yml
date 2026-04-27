@@ -1,0 +1,178 @@
+---
+# Upgrades the running Arcana BEAM cluster with minimal downtime.
+#
+# Sequence:
+#   1. git pull source
+#   2. Poll /api/readiness until no active agent processes (or timeout)
+#   3. Run migrations (idempotent — always safe)
+#   4. Rebuild image (if mix.exs or Dockerfile.dev changed; else skipped)
+#   5. Restart beam-1 (graceful: 30s stop_grace_period in compose)
+#   6. Wait for Phoenix to respond
+#
+# Usage:
+#   ansible-playbook playbooks/upgrade-arcana.yml
+#   ansible-playbook playbooks/upgrade-arcana.yml -e force_rebuild=true
+#   ansible-playbook playbooks/upgrade-arcana.yml -e drain_timeout_minutes=0  # skip drain wait
+
+- name: Upgrade Arcana BEAM cluster
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    arcana_src_path: /home/eslick/homelab/projects/arcana
+    arcana_beam1_port: 14100
+    readiness_url: "http://127.0.0.1:{{ arcana_beam1_port }}/api/readiness"
+    drain_timeout_minutes: 10   # max wait for active agents to finish
+    force_rebuild: false        # set true to rebuild even if no tracked files changed
+
+  tasks:
+    # --- Pull latest source ---
+
+    - name: Record current HEAD before pull
+      ansible.builtin.command:
+        cmd: git rev-parse HEAD
+        chdir: "{{ arcana_src_path }}"
+      register: sha_before
+      changed_when: false
+      tags: [arcana, upgrade]
+
+    - name: Pull latest arcana source
+      ansible.builtin.command:
+        cmd: git pull --ff-only
+        chdir: "{{ arcana_src_path }}"
+      register: git_pull
+      changed_when: "'Already up to date' not in git_pull.stdout"
+      tags: [arcana, upgrade]
+
+    - name: Record HEAD after pull
+      ansible.builtin.command:
+        cmd: git rev-parse HEAD
+        chdir: "{{ arcana_src_path }}"
+      register: sha_after
+      changed_when: false
+      tags: [arcana, upgrade]
+
+    - name: Report git changes
+      ansible.builtin.debug:
+        msg: "{{ sha_after.stdout[:8] }} ← {{ sha_before.stdout[:8] }} (pulled: {{ git_pull.changed }})"
+      tags: [arcana, upgrade]
+
+    # --- Detect whether a full rebuild is needed ---
+
+    - name: Check if dependency or Dockerfile files changed
+      ansible.builtin.command:
+        cmd: >
+          git diff {{ sha_before.stdout }} {{ sha_after.stdout }}
+          --name-only -- mix.exs mix.lock Dockerfile.dev
+        chdir: "{{ arcana_src_path }}"
+      register: rebuild_files
+      changed_when: false
+      when: git_pull.changed
+      tags: [arcana, upgrade]
+
+    - name: Set rebuild flag
+      ansible.builtin.set_fact:
+        needs_rebuild: >-
+          {{ force_rebuild | bool or
+             (git_pull.changed and rebuild_files.stdout | default('') | length > 0) }}
+      tags: [arcana, upgrade]
+
+    # --- Drain: wait for active agent processes to finish ---
+
+    - name: Poll readiness until no active processes (timeout {{ drain_timeout_minutes }}m)
+      ansible.builtin.uri:
+        url: "{{ readiness_url }}"
+        return_content: yes
+        status_code: 200
+        timeout: 5
+      register: readiness
+      until: >
+        readiness.status != 200 or
+        (readiness.json.safe_to_upgrade | default(true))
+      retries: "{{ (drain_timeout_minutes | int * 12) | int }}"
+      delay: 5
+      failed_when: false
+      when: drain_timeout_minutes | int > 0 and not ansible_check_mode
+      tags: [arcana, upgrade]
+
+    - name: Report drain result
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            'Drained — 0 active processes' if readiness.json.safe_to_upgrade | default(true)
+            else 'Drain timeout — ' ~ readiness.json.active_processes | default('?') ~ ' processes still running, forcing upgrade'
+          }}
+      when: readiness is defined
+      tags: [arcana, upgrade]
+
+    # --- Migrations (always run — idempotent) ---
+
+    - name: Run migrations
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
+          run --rm beam-1 sh -c "mix ecto.migrate"
+      become: yes
+      register: arcana_migrate
+      changed_when: "'Migrated' in arcana_migrate.stderr"
+      # CockroachDB DDL auto-commits mid-transaction; rc=1 with MatchError is expected
+      failed_when: >
+        arcana_migrate.rc not in [0, 1] or
+        (arcana_migrate.rc == 1 and
+         'MatchError' not in arcana_migrate.stderr and
+         'TransactionError' not in arcana_migrate.stderr)
+      when: not ansible_check_mode
+      tags: [arcana, upgrade]
+
+    # --- Rebuild image (only when needed) ---
+
+    - name: Rebuild arcana image (mix.exs, mix.lock, or Dockerfile.dev changed)
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
+          build beam-1
+      become: yes
+      register: arcana_build
+      changed_when: true
+      when: needs_rebuild | default(false) and not ansible_check_mode
+      tags: [arcana, upgrade]
+
+    - name: Skip rebuild notice
+      ansible.builtin.debug:
+        msg: "Skipping image rebuild — mix.exs, mix.lock, and Dockerfile.dev unchanged"
+      when: not (needs_rebuild | default(false))
+      tags: [arcana, upgrade]
+
+    # --- Restart beam-1 ---
+
+    - name: Restart beam-1 with new image
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
+          up -d --no-deps beam-1
+      become: yes
+      register: arcana_restart
+      changed_when: "'Started' in arcana_restart.stdout or 'Recreated' in arcana_restart.stdout"
+      when: not ansible_check_mode
+      tags: [arcana, upgrade]
+
+    # --- Verify ---
+
+    - name: Wait for beam-1 Phoenix endpoint to respond
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ arcana_beam1_port }}"
+        status_code: [200, 301, 302, 303]
+        timeout: 5
+      register: arcana_health
+      until: arcana_health.status in [200, 301, 302, 303]
+      retries: 36
+      delay: 5
+      when: not ansible_check_mode
+      tags: [arcana, upgrade]
+
+    - name: Upgrade complete
+      ansible.builtin.debug:
+        msg: "Arcana upgraded to {{ git_pull.after[:8] }} and healthy"
+      when: not ansible_check_mode
+      tags: [arcana, upgrade]
