@@ -27,7 +27,7 @@
     docker_network: homelab-net
 
     sglang_port: 8081
-    sglang_image: "lmsysorg/sglang:latest"
+    sglang_image: "sglang-base:working"
     sglang_model_id: "QuantTrio/Qwen3.6-35B-A3B-AWQ"
     sglang_served_model_name: "qwen3.6-35b-a3b"
     sglang_tensor_parallel_size: 2
@@ -37,9 +37,7 @@
       --chunked-prefill-size 8192
       --max-running-requests 4
       --attention-backend flashinfer
-      --mamba-backend flashinfer
       --mamba-scheduler-strategy no_buffer
-      --mamba-ssm-dtype bfloat16
       --reasoning-parser qwen3
       --tool-call-parser qwen
     sglang_awq_patch: true
@@ -71,11 +69,10 @@
       become: yes
       tags: [configure, sglang]
 
-    - name: Pull SGLang image
+    - name: Ensure SGLang image is present
       community.docker.docker_image:
         name: "{{ sglang_image }}"
-        source: pull
-        force_source: no
+        source: local
       become: yes
       tags: [docker, sglang]
 
