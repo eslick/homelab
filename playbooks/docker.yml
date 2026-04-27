@@ -21,7 +21,7 @@
         ports: [9000, 9001]
       - name: datomic
         ports: [4334]
-      - name: agentos
+      - name: arcana
         ports: []  # 127.0.0.1-bound; nginx handles external access via port 14000
 
     # Obsidian vault (synced via Syncthing — no secrets here)
@@ -44,13 +44,13 @@
     datomic_port: 4334
     datomic_version: "1.0.7556"
 
-    # AgentOS BEAM cluster
-    agentos_src_path: /home/eslick/homelab/projects/agentos
-    agentos_beam1_port: 14100
-    agentos_beam2_port: 14101
-    agentos_port: 14000
-    agentos_cookie: "agentos_dev"
-    agentos_cluster_nodes: 1  # set to 2 to re-enable beam-2 for cluster testing
+    # Arcana BEAM cluster
+    arcana_src_path: /home/eslick/homelab/projects/arcana
+    arcana_beam1_port: 14100
+    arcana_beam2_port: 14101
+    arcana_port: 14000
+    arcana_cookie: "arcana_dev"
+    arcana_cluster_nodes: 1  # set to 2 to re-enable beam-2 for cluster testing
 
   tasks:
     # --- Shared infrastructure ---
@@ -143,116 +143,116 @@
       become: yes
       tags: [docker, service]
 
-    # --- AgentOS BEAM cluster ---
+    # --- Arcana BEAM cluster ---
 
-    - name: Ensure agentos compose directory exists
+    - name: Ensure arcana compose directory exists
       ansible.builtin.file:
-        path: "{{ compose_base }}/agentos"
+        path: "{{ compose_base }}/arcana"
         state: directory
         mode: '0755'
       become: yes
-      tags: [agentos, configure]
+      tags: [arcana, configure]
 
-    - name: Deploy agentos compose file from template
+    - name: Deploy arcana compose file from template
       ansible.builtin.template:
-        src: "../templates/agentos-compose.yml.j2"
-        dest: "{{ compose_base }}/agentos/docker-compose.yml"
+        src: "../templates/arcana-compose.yml.j2"
+        dest: "{{ compose_base }}/arcana/docker-compose.yml"
         mode: '0644'
       become: yes
-      tags: [agentos, configure]
+      tags: [arcana, configure]
 
     - name: Create agent_os_dev database in CockroachDB
       ansible.builtin.command: >
         docker exec cockroachdb
         cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS agent_os_dev"
-      register: agentos_crdb_db
-      changed_when: "'CREATE DATABASE' in agentos_crdb_db.stdout"
+      register: arcana_crdb_db
+      changed_when: "'CREATE DATABASE' in arcana_crdb_db.stdout"
       become: yes
-      tags: [agentos]
+      tags: [arcana]
 
-    - name: Create AgentOS artifacts bucket in MinIO
+    - name: Create Arcana artifacts bucket in MinIO
       ansible.builtin.command: >
         docker run --rm --network {{ docker_network }} --entrypoint sh minio/mc -c "
           mc alias set local http://minio:9000 {{ minio_root_user }} {{ minio_root_password }} &&
           mc mb --ignore-existing local/artifacts"
-      register: agentos_bucket
-      changed_when: "'Bucket created' in agentos_bucket.stdout"
+      register: arcana_bucket
+      changed_when: "'Bucket created' in arcana_bucket.stdout"
       become: yes
-      tags: [agentos]
+      tags: [arcana]
 
-    - name: Build AgentOS dev image
+    - name: Build Arcana dev image
       ansible.builtin.command:
         cmd: >
-          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
           build beam-1
       become: yes
-      register: agentos_build
-      changed_when: "'writing image' in agentos_build.stdout"
-      tags: [agentos, service]
+      register: arcana_build
+      changed_when: "'writing image' in arcana_build.stdout"
+      tags: [arcana, service]
 
-    - name: Run AgentOS migrations and seeds (one-off container, before starting servers)
+    - name: Run Arcana migrations and seeds (one-off container, before starting servers)
       ansible.builtin.command:
         cmd: >
-          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
           run --rm beam-1 sh -c "mix ecto.migrate && mix run priv/repo/seeds.exs"
       become: yes
-      register: agentos_migrate
-      changed_when: "'Migrated' in agentos_migrate.stderr or 'Created' in agentos_migrate.stdout"
+      register: arcana_migrate
+      changed_when: "'Migrated' in arcana_migrate.stderr or 'Created' in arcana_migrate.stdout"
       # CockroachDB DDL auto-commits mid-transaction; Ecto's rollback handler
       # panics with rc=1 even when all migrations succeeded. Treat rc=1 with
       # the known MatchError as a warning, not a hard failure.
       failed_when: >
-        agentos_migrate.rc not in [0, 1] or
-        (agentos_migrate.rc == 1 and
-         'MatchError' not in agentos_migrate.stderr and
-         'TransactionError' not in agentos_migrate.stderr)
+        arcana_migrate.rc not in [0, 1] or
+        (arcana_migrate.rc == 1 and
+         'MatchError' not in arcana_migrate.stderr and
+         'TransactionError' not in arcana_migrate.stderr)
       when: not ansible_check_mode
-      tags: [agentos, service]
+      tags: [arcana, service]
 
     - name: Start beam-1
       ansible.builtin.command:
         cmd: >
-          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
           up -d --no-deps beam-1
       become: yes
-      register: agentos_beam1_up
-      changed_when: "'Started' in agentos_beam1_up.stdout or 'Created' in agentos_beam1_up.stdout"
-      tags: [agentos, service]
+      register: arcana_beam1_up
+      changed_when: "'Started' in arcana_beam1_up.stdout or 'Created' in arcana_beam1_up.stdout"
+      tags: [arcana, service]
 
     - name: Wait for beam-1 Phoenix endpoint to respond
       ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ agentos_beam1_port }}"
+        url: "http://127.0.0.1:{{ arcana_beam1_port }}"
         status_code: [200, 301, 302, 303]
         timeout: 5
-      register: agentos_beam1_health
-      until: agentos_beam1_health.status in [200, 301, 302, 303]
+      register: arcana_beam1_health
+      until: arcana_beam1_health.status in [200, 301, 302, 303]
       retries: 24
       delay: 5
       when: not ansible_check_mode
-      tags: [agentos, service]
+      tags: [arcana, service]
 
     - name: Start beam-2 (reuses compiled deps/build volumes)
       ansible.builtin.command:
         cmd: >
-          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
           up -d --no-deps beam-2
       become: yes
-      register: agentos_beam2_up
-      changed_when: "'Started' in agentos_beam2_up.stdout or 'Created' in agentos_beam2_up.stdout"
-      when: agentos_cluster_nodes | int >= 2
-      tags: [agentos, service]
+      register: arcana_beam2_up
+      changed_when: "'Started' in arcana_beam2_up.stdout or 'Created' in arcana_beam2_up.stdout"
+      when: arcana_cluster_nodes | int >= 2
+      tags: [arcana, service]
 
     - name: Stop beam-2 when running single-node
       ansible.builtin.command:
         cmd: >
-          docker compose -f {{ compose_base }}/agentos/docker-compose.yml
+          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
           stop beam-2
       become: yes
-      register: agentos_beam2_stop
-      changed_when: "'Stopped' in agentos_beam2_stop.stderr"
+      register: arcana_beam2_stop
+      changed_when: "'Stopped' in arcana_beam2_stop.stderr"
       failed_when: false
-      when: agentos_cluster_nodes | int < 2
-      tags: [agentos, service]
+      when: arcana_cluster_nodes | int < 2
+      tags: [arcana, service]
 
     # --- Datomic Transactor ---
 

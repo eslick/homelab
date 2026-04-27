@@ -7,10 +7,10 @@
     tailscale_hostname: speedracer.terrier-haddock.ts.net
     tailscale_ip: "{{ ansible_tailscale0.ipv4.address }}"
     cert_dir: /etc/ssl/tailscale
-    agentos_port: 14000
-    agentos_beam1_port: 14100
-    agentos_beam2_port: 14101
-    agentos_cluster_nodes: 1
+    arcana_port: 14000
+    arcana_beam1_port: 14100
+    arcana_beam2_port: 14101
+    arcana_cluster_nodes: 1
     vllm_port: 8081
     vllm_nginx_port: 8082
 
@@ -68,19 +68,19 @@
       notify: Reload nginx
       tags: [configure]
 
-    - name: Deploy nginx site config for AgentOS
+    - name: Deploy nginx site config for Arcana
       ansible.builtin.template:
-        src: ../templates/agentos-nginx.conf.j2
-        dest: /etc/nginx/sites-available/agentos
+        src: ../templates/arcana-nginx.conf.j2
+        dest: /etc/nginx/sites-available/arcana
         mode: '0644'
       become: yes
       notify: Reload nginx
       tags: [configure]
 
-    - name: Enable nginx site for AgentOS
+    - name: Enable nginx site for Arcana
       ansible.builtin.file:
-        src: /etc/nginx/sites-available/agentos
-        dest: /etc/nginx/sites-enabled/agentos
+        src: /etc/nginx/sites-available/arcana
+        dest: /etc/nginx/sites-enabled/arcana
         state: link
       become: yes
       notify: Reload nginx
@@ -180,7 +180,7 @@
         proto: tcp
       loop:
         - '2099'
-        - '{{ agentos_port }}'
+        - '{{ arcana_port }}'
         - '{{ vllm_nginx_port }}'
       become: yes
       tags: [security]

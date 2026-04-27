@@ -1,0 +1,173 @@
+---
+# Installs Elixir/Erlang development tooling for the eslick user via asdf.
+# Erlang is compiled from source — first run takes 20–30 minutes.
+# Re-runs are fast: `creates:` guards skip already-installed versions.
+#
+# Apply:   ansible-playbook playbooks/elixir-dev.yml
+# Upgrade: bump erlang_version / elixir_version vars and re-run
+
+- name: Install Elixir development environment
+  hosts: homelab
+  gather_facts: yes
+
+  vars:
+    dev_user: eslick
+    asdf_dir: "/home/{{ dev_user }}/.asdf"
+    asdf_sh: "/home/{{ dev_user }}/.asdf/asdf.sh"
+    # OTP version (asdf-erlang uses Erlang/OTP release numbering)
+    erlang_version: "27.2"
+    # asdf-elixir appends -otp-NN to match OTP major version
+    elixir_version: "1.18.3-otp-27"
+
+  tasks:
+    # --- Build dependencies ---
+
+    - name: Install Erlang build dependencies
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - autoconf
+          - m4
+          - libncurses-dev
+          - libssl-dev
+          - libssh-dev
+          - inotify-tools   # Phoenix live reload
+          - git
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, deps]
+
+    # --- asdf version manager ---
+
+    - name: Clone asdf version manager
+      ansible.builtin.git:
+        repo: https://github.com/asdf-vm/asdf.git
+        dest: "{{ asdf_dir }}"
+        version: v0.16.7
+        update: no
+      become: yes
+      become_user: "{{ dev_user }}"
+      tags: [install, asdf]
+
+    - name: Add asdf to .bashrc
+      ansible.builtin.blockinfile:
+        path: "/home/{{ dev_user }}/.bashrc"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - asdf"
+        block: |
+          export ASDF_DIR="$HOME/.asdf"
+          . "$HOME/.asdf/asdf.sh"
+          . "$HOME/.asdf/completions/asdf.bash"
+      become: yes
+      become_user: "{{ dev_user }}"
+      tags: [configure, asdf]
+
+    # --- Erlang ---
+
+    - name: Add asdf-erlang plugin
+      ansible.builtin.command:
+        cmd: >
+          bash -c ". {{ asdf_sh }} &&
+          asdf plugin add erlang https://github.com/asdf-vm/asdf-erlang.git"
+      become: yes
+      become_user: "{{ dev_user }}"
+      register: erlang_plugin
+      changed_when: "'already added' not in erlang_plugin.stderr"
+      failed_when: erlang_plugin.rc != 0 and 'already added' not in erlang_plugin.stderr
+      tags: [install, erlang]
+
+    - name: Install Erlang/OTP {{ erlang_version }} (compiles from source, ~20 min first run)
+      ansible.builtin.command:
+        # --without-wx: headless server, no GUI toolkit needed
+        # --without-javac: no Java interop needed
+        cmd: >
+          bash -c ". {{ asdf_sh }} &&
+          KERL_CONFIGURE_OPTIONS='--without-javac --without-wx'
+          asdf install erlang {{ erlang_version }}"
+        creates: "{{ asdf_dir }}/installs/erlang/{{ erlang_version }}"
+      become: yes
+      become_user: "{{ dev_user }}"
+      tags: [install, erlang]
+      when: not ansible_check_mode
+
+    - name: Set global Erlang version to {{ erlang_version }}
+      ansible.builtin.command:
+        cmd: bash -c ". {{ asdf_sh }} && asdf global erlang {{ erlang_version }}"
+      become: yes
+      become_user: "{{ dev_user }}"
+      changed_when: false
+      tags: [configure, erlang]
+
+    # --- Elixir ---
+
+    - name: Add asdf-elixir plugin
+      ansible.builtin.command:
+        cmd: >
+          bash -c ". {{ asdf_sh }} &&
+          asdf plugin add elixir https://github.com/asdf-vm/asdf-elixir.git"
+      become: yes
+      become_user: "{{ dev_user }}"
+      register: elixir_plugin
+      changed_when: "'already added' not in elixir_plugin.stderr"
+      failed_when: elixir_plugin.rc != 0 and 'already added' not in elixir_plugin.stderr
+      tags: [install, elixir]
+
+    - name: Install Elixir {{ elixir_version }}
+      ansible.builtin.command:
+        cmd: >
+          bash -c ". {{ asdf_sh }} &&
+          asdf install elixir {{ elixir_version }}"
+        creates: "{{ asdf_dir }}/installs/elixir/{{ elixir_version }}"
+      become: yes
+      become_user: "{{ dev_user }}"
+      tags: [install, elixir]
+
+    - name: Set global Elixir version to {{ elixir_version }}
+      ansible.builtin.command:
+        cmd: bash -c ". {{ asdf_sh }} && asdf global elixir {{ elixir_version }}"
+      become: yes
+      become_user: "{{ dev_user }}"
+      changed_when: false
+      tags: [configure, elixir]
+
+    # --- Mix tooling ---
+
+    - name: Install Hex package manager
+      ansible.builtin.command:
+        cmd: bash -c ". {{ asdf_sh }} && mix local.hex --force"
+      become: yes
+      become_user: "{{ dev_user }}"
+      changed_when: false
+      tags: [install, elixir]
+
+    - name: Install rebar3
+      ansible.builtin.command:
+        cmd: bash -c ". {{ asdf_sh }} && mix local.rebar --force"
+      become: yes
+      become_user: "{{ dev_user }}"
+      changed_when: false
+      tags: [install, elixir]
+
+    - name: Reshim asdf after mix tooling install
+      ansible.builtin.command:
+        cmd: bash -c ". {{ asdf_sh }} && asdf reshim elixir"
+      become: yes
+      become_user: "{{ dev_user }}"
+      changed_when: false
+      tags: [install, elixir]
+
+    # --- Verify ---
+
+    - name: Verify elixir and mix are accessible
+      ansible.builtin.command:
+        cmd: bash -c ". {{ asdf_sh }} && elixir --version && mix --version"
+      become: yes
+      become_user: "{{ dev_user }}"
+      register: elixir_version_check
+      changed_when: false
+      tags: [verify]
+
+    - name: Show installed versions
+      ansible.builtin.debug:
+        msg: "{{ elixir_version_check.stdout_lines }}"
+      tags: [verify]

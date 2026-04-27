@@ -1,0 +1,93 @@
+# Two-node Arcana BEAM cluster for speedracer
+# Managed by playbooks/docker.yml — do not run standalone.
+# Infra deps (cockroachdb, minio) must already be running on {{ docker_network }}.
+#
+# Start sequence (handled by ansible):
+#   1. Ansible creates agent_os_dev DB and artifacts bucket
+#   2. docker compose up --no-deps beam-1  (compiles deps, ~60s first run)
+#   3. docker exec beam-1 mix ecto.migrate
+#   4. docker compose up --no-deps beam-2  (reuses compiled deps volume)
+
+name: arcana
+
+services:
+  beam-1:
+    build:
+      context: {{ arcana_src_path }}
+      dockerfile: Dockerfile.dev
+    image: arcana-dev:local
+    container_name: beam-1
+    hostname: beam-1
+    command: >
+      elixir --sname arcana@beam-1 --cookie {{ arcana_cookie }}
+      -S mix phx.server
+    environment:
+      MIX_ENV: dev
+      NODE_NAME: "arcana@beam-1"
+      DATABASE_URL: "postgresql://root@cockroachdb:26257/agent_os_dev?sslmode=disable"
+      S3_HOST: minio
+      AWS_ACCESS_KEY_ID: "{{ minio_root_user }}"
+      AWS_SECRET_ACCESS_KEY: "{{ minio_root_password }}"
+      PORT: "4000"
+      PHX_BIND: "0.0.0.0"
+      PHX_HOST: "{{ tailscale_hostname }}"
+      ANTHROPIC_API_KEY: "{{ anthropic_api_key }}"
+      OPENAI_API_KEY: "{{ openai_api_key | default('') }}"
+    stdin_open: true
+    tty: true
+    volumes:
+      - {{ arcana_src_path }}:/app
+      - deps:/app/deps
+      - build:/app/_build
+      - node_modules:/app/assets/node_modules
+    ports:
+      - "127.0.0.1:{{ arcana_beam1_port }}:4000"
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  beam-2:
+    build:
+      context: {{ arcana_src_path }}
+      dockerfile: Dockerfile.dev
+    image: arcana-dev:local
+    container_name: beam-2
+    hostname: beam-2
+    command: >
+      elixir --sname arcana@beam-2 --cookie {{ arcana_cookie }}
+      -S mix phx.server
+    environment:
+      MIX_ENV: dev
+      NODE_NAME: "arcana@beam-2"
+      DATABASE_URL: "postgresql://root@cockroachdb:26257/agent_os_dev?sslmode=disable"
+      S3_HOST: minio
+      AWS_ACCESS_KEY_ID: "{{ minio_root_user }}"
+      AWS_SECRET_ACCESS_KEY: "{{ minio_root_password }}"
+      PORT: "4000"
+      PHX_BIND: "0.0.0.0"
+      PHX_HOST: "{{ tailscale_hostname }}"
+      ANTHROPIC_API_KEY: "{{ anthropic_api_key }}"
+      OPENAI_API_KEY: "{{ openai_api_key | default('') }}"
+    stdin_open: true
+    tty: true
+    volumes:
+      - {{ arcana_src_path }}:/app
+      - deps:/app/deps
+      - build:/app/_build
+      - node_modules:/app/assets/node_modules
+    ports:
+      - "127.0.0.1:{{ arcana_beam2_port }}:4000"
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  deps:
+  build:
+  node_modules:
+
+networks:
+  {{ docker_network }}:
+    external: true
