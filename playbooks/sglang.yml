@@ -31,11 +31,11 @@
     sglang_model_id: "QuantTrio/Qwen3.6-35B-A3B-AWQ"
     sglang_served_model_name: "qwen3.6-35b-a3b"
     sglang_tensor_parallel_size: 2
-    sglang_max_model_len: 65536
+    sglang_max_model_len: 131072
     sglang_gpu_memory_fraction: "0.88"
     sglang_extra_args: >-
       --chunked-prefill-size 8192
-      --max-running-requests 32
+      --max-running-requests 4
       --attention-backend flashinfer
       --mamba-backend flashinfer
       --mamba-scheduler-strategy no_buffer
@@ -43,7 +43,7 @@
       --reasoning-parser qwen3
       --tool-call-parser qwen
     sglang_awq_patch: true
-    sglang_json_model_override_args: '{"rope_scaling":{"rope_type":"yarn","factor":2.0,"original_max_position_embeddings":32768}}'
+    sglang_json_model_override_args: '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
 
   tasks:
 
