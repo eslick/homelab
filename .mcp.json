@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "arcana": {
+      "type": "http",
+      "url": "http://localhost:14100/mcp/arcana"
+    }
+  }
+}
