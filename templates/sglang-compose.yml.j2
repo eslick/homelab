@@ -8,19 +8,23 @@ services:
       - HF_TOKEN={{ hugging_face_token }}
       - HUGGING_FACE_HUB_TOKEN={{ hugging_face_token }}
     command: >
-      sglang serve --model-path {{ sglang_model_id }}
+      python -m sglang.launch_server
+      --model-path {{ sglang_model_id }}
       --served-model-name {{ sglang_served_model_name }}
       --tp {{ sglang_tensor_parallel_size }}
       --mem-fraction-static {{ sglang_gpu_memory_fraction }}
       --context-length {{ sglang_max_model_len }}
-      --kv-cache-dtype {{ sglang_kv_cache_dtype }}
-      --host 0.0.0.0 --port 30000
       {{ sglang_extra_args | default('') }}
+{% if sglang_json_model_override_args is defined and sglang_json_model_override_args %}
+      --json-model-override-args '{{ sglang_json_model_override_args }}'
+{% endif %}
+      --host 0.0.0.0 --port 30000
     volumes:
       - vllm-models:/root/.cache/huggingface  # share HF cache with vLLM to avoid re-downloading
 {% if sglang_awq_patch | default(false) %}
       - /opt/sglang-patches/awq.py:/sgl-workspace/sglang/python/sglang/srt/layers/quantization/awq.py:ro
 {% endif %}
+      - /opt/sglang-patches/causal_conv1d_triton.py:/sgl-workspace/sglang/python/sglang/srt/layers/attention/mamba/causal_conv1d_triton.py:ro
     networks:
       - {{ docker_network }}
     shm_size: "4g"
