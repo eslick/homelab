@@ -1,8 +1,7 @@
-# Qwen3-32B-AWQ — dense, full 32B params, higher quality ceiling, slower decode
+# Qwen3.6-27B-AWQ-INT4 — dense, full 27B params, higher quality ceiling, slower decode than MoE
 # TP=2 across both 3090s; standard transformer architecture (no mamba)
-# NOTE: verify HF model ID — update sglang_model_id if using a different quantization
-sglang_model_id: "bartowski/Qwen3-32B-AWQ"
-sglang_served_model_name: "qwen3-32b"
+sglang_model_id: "cyankiwi/Qwen3.6-27B-AWQ-INT4"
+sglang_served_model_name: "qwen3.6-27b"
 sglang_image: "sglang-base:working"
 sglang_tensor_parallel_size: 2
 sglang_max_model_len: 32768
