@@ -58,3 +58,38 @@
         group: root
       become: yes
       tags: [configure]
+
+    # RAID5 local array (md0) — 4× WD Red 3.6TB, ext4, ~11TB usable
+    - name: Create /mnt/data mount point
+      ansible.builtin.file:
+        path: /mnt/data
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      become: yes
+      tags: [configure, raid]
+
+    - name: Add md0 to fstab and ensure mounted
+      ansible.posix.mount:
+        src: UUID=494b6fb6-44cf-4ebc-ac7f-db374a749fd2
+        path: /mnt/data
+        fstype: ext4
+        opts: defaults,nofail,_netdev
+        state: mounted
+      become: yes
+      tags: [configure, raid]
+
+    - name: Ensure mdadm.conf reflects current array
+      ansible.builtin.shell:
+        cmd: mdadm --detail --scan > /etc/mdadm/mdadm.conf
+      become: yes
+      changed_when: true
+      tags: [configure, raid]
+
+    - name: Update initramfs to include mdadm config
+      ansible.builtin.command:
+        cmd: update-initramfs -u
+      become: yes
+      changed_when: true
+      tags: [configure, raid]
