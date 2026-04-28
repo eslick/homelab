@@ -51,6 +51,8 @@
     arcana_port: 14000
     arcana_cookie: "arcana_dev"
     arcana_cluster_nodes: 1  # set to 2 to re-enable beam-2 for cluster testing
+    anthropic_api_key: "{{ vault_anthropic_api_key }}"
+    openai_api_key: "{{ vault_openai_api_key }}"
 
   tasks:
     # --- Shared infrastructure ---

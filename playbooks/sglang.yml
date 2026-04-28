@@ -76,11 +76,37 @@
       become: yes
       tags: [docker, sglang]
 
-    - name: Start SGLang container
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/sglang"
-        state: present
+    - name: Build sglang-watcher image
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/sglang/docker-compose.yml build sglang-watcher
       become: yes
+      register: watcher_build
+      changed_when: "'writing image' in watcher_build.stdout"
+      tags: [docker, sglang]
+
+    - name: Stop and remove SGLang container to apply new config (no port binding)
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/sglang/docker-compose.yml rm -sf sglang
+      become: yes
+      ignore_errors: yes  # ok if container doesn't exist
+      tags: [docker, sglang]
+
+    - name: Pre-create SGLang container from new config (watcher will start it on demand)
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/sglang/docker-compose.yml create sglang
+      become: yes
+      register: sglang_create
+      changed_when: "'Created' in sglang_create.stdout"
+      tags: [docker, sglang]
+
+    - name: Start sglang-watcher (watcher manages SGLang lifecycle on demand)
+      ansible.builtin.command:
+        cmd: >
+          docker compose -f {{ compose_base }}/sglang/docker-compose.yml
+          up -d --no-deps sglang-watcher
+      become: yes
+      register: watcher_up
+      changed_when: "'Started' in watcher_up.stdout or 'Created' in watcher_up.stdout"
       tags: [docker, sglang]
 
     - name: Allow SGLang port from localhost
