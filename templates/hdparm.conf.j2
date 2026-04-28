@@ -1,0 +1,11 @@
+## hdparm.conf — managed by Ansible (playbooks/power.yml)
+## HDD spindown for RAID5 array on WD Red 3.6TB drives.
+## Drives spin back up automatically on any RAID or filesystem access.
+
+{% for dev in hdd_devices %}
+{{ dev }} {
+    apm = {{ hdd_apm_level }}
+    spindown_time = {{ hdd_spindown_timeout }}
+}
+
+{% endfor %}

@@ -1,0 +1,77 @@
+---
+# Idle power management: HDD spindown and CPU governor persistence.
+#
+# NVMe APST is already enabled (kernel default) — no action needed.
+# CPU c-states are limited to C1/C2 by TRX40 ACPI firmware; deeper sleep
+# would require amd_pstate kernel parameter (risky, not done here).
+# CockroachDB is the dominant CPU idle consumer (~6-7%); see docker.yml
+# for container-level CPU limits if further reduction is needed.
+
+- name: Idle power management
+  hosts: homelab
+  gather_facts: yes
+
+  vars:
+    # APM 127 = max power saving while allowing spindown (1-127 range).
+    # 128-254 disables spindown; 255 disables APM entirely.
+    hdd_apm_level: 127
+    # Spindown timeout: 241 = 30 minutes (hdparm encoding: 241-251 = (val-240)*30min).
+    # 30 min balances power savings vs. excessive spinup/spindown wear on RAID drives.
+    hdd_spindown_timeout: 241
+    hdd_devices:
+      - /dev/sda
+      - /dev/sdb
+
+  tasks:
+    - name: Install hdparm and cpufrequtils
+      ansible.builtin.apt:
+        name:
+          - hdparm
+          - cpufrequtils
+        state: present
+        update_cache: no
+      become: yes
+      tags: [install, hdparm, cpufreq]
+
+    - name: Configure HDD spindown via hdparm.conf
+      ansible.builtin.template:
+        src: ../templates/hdparm.conf.j2
+        dest: /etc/hdparm.conf
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      notify: Apply hdparm settings
+      tags: [configure, hdparm]
+
+    # Ubuntu 24.04 applies /etc/hdparm.conf via udev on disk attach (no hdparm.service).
+    # This udev rule ensures settings are re-applied on any block device add event.
+    - name: Install udev rule to apply hdparm.conf on disk attach
+      ansible.builtin.copy:
+        # WD Red drives don't support ATA APM (-B); only apply spindown timeout (-S).
+        dest: /etc/udev/rules.d/69-hdparm.rules
+        content: |
+          ACTION=="add", SUBSYSTEM=="block", KERNEL=="sd[a-z]", RUN+="/usr/sbin/hdparm -q -S {{ hdd_spindown_timeout }} /dev/%k"
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      tags: [configure, hdparm]
+
+    - name: Persist schedutil CPU governor across reboots
+      ansible.builtin.copy:
+        dest: /etc/default/cpufrequtils
+        content: |
+          GOVERNOR="schedutil"
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      tags: [configure, cpufreq]
+
+  handlers:
+    - name: Apply hdparm settings
+      ansible.builtin.command:
+        cmd: hdparm -q -S {{ hdd_spindown_timeout }} {{ item }}
+      loop: "{{ hdd_devices }}"
+      become: yes
