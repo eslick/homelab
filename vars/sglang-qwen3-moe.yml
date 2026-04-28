@@ -8,7 +8,7 @@ sglang_max_model_len: 131072
 sglang_gpu_memory_fraction: "0.88"
 sglang_extra_args: >-
   --chunked-prefill-size 8192
-  --max-running-requests 4
+  --max-running-requests 8
   --attention-backend flashinfer
   --mamba-scheduler-strategy no_buffer
   --reasoning-parser qwen3
