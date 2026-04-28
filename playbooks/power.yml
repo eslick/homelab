@@ -58,6 +58,17 @@
       become: yes
       tags: [configure, hdparm]
 
+    - name: Blacklist local SATA drives from multipathd
+      ansible.builtin.copy:
+        src: ../files/multipath.conf
+        dest: /etc/multipath.conf
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      notify: Reload multipathd
+      tags: [configure, multipath]
+
     - name: Persist schedutil CPU governor across reboots
       ansible.builtin.copy:
         dest: /etc/default/cpufrequtils
@@ -70,6 +81,12 @@
       tags: [configure, cpufreq]
 
   handlers:
+    - name: Reload multipathd
+      ansible.builtin.service:
+        name: multipathd
+        state: reloaded
+      become: yes
+
     - name: Apply hdparm settings
       ansible.builtin.command:
         cmd: hdparm -q -S {{ hdd_spindown_timeout }} {{ item }}
