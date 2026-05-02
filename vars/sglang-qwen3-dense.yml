@@ -1,3 +1,4 @@
+# BROKEN: QuantTrio/Qwen3.6-27B-AWQ produces degenerate "!" token spam — do not use.
 # Qwen3.6-27B-AWQ — dense, full 27B params, QuantTrio AWQ quantization
 # TP=2 across both 3090s; same AWQ build approach as working MoE model
 # ~14GB VRAM per GPU; sglang_awq_patch required (same as MoE)
@@ -12,6 +13,6 @@ sglang_extra_args: >-
   --max-running-requests 8
   --attention-backend flashinfer
   --reasoning-parser qwen3
-  --tool-call-parser qwen25
+  --tool-call-parser qwen
 sglang_awq_patch: true
 sglang_json_model_override_args: ""
