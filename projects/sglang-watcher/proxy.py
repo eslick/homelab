@@ -84,6 +84,7 @@ async def _ensure_running() -> bool:
         ready = await _wait_healthy()
         if ready:
             log.info("SGLang is ready")
+            _last_request = time.monotonic()  # reset idle clock; startup is not idle time
         else:
             log.error("SGLang did not become healthy within %ds", STARTUP_TIMEOUT)
         return ready
@@ -99,6 +100,8 @@ async def _idle_watchdog() -> None:
     while True:
         await asyncio.sleep(60)
         if not _container_running():
+            continue
+        if _starting:  # startup is not idle; let _ensure_running manage the lifecycle
             continue
         idle = time.monotonic() - _last_request
         if idle >= IDLE_TIMEOUT:
