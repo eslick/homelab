@@ -24,7 +24,7 @@ services:
     environment:
       MIX_ENV: dev
       NODE_NAME: "arcana@beam-1"
-      DATABASE_URL: "postgresql://root@cockroachdb:26257/agent_os_dev?sslmode=disable"
+      DATABASE_URL: "postgresql://yugabyte@yugabytedb:5433/agent_os_dev"
       S3_HOST: minio
       AWS_ACCESS_KEY_ID: "{{ minio_root_user }}"
       AWS_SECRET_ACCESS_KEY: "{{ minio_root_password }}"
@@ -60,7 +60,7 @@ services:
     environment:
       MIX_ENV: dev
       NODE_NAME: "arcana@beam-2"
-      DATABASE_URL: "postgresql://root@cockroachdb:26257/agent_os_dev?sslmode=disable"
+      DATABASE_URL: "postgresql://yugabyte@yugabytedb:5433/agent_os_dev"
       S3_HOST: minio
       AWS_ACCESS_KEY_ID: "{{ minio_root_user }}"
       AWS_SECRET_ACCESS_KEY: "{{ minio_root_password }}"

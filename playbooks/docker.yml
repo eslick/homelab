@@ -19,6 +19,8 @@
         ports: [26257, 8090]
       - name: minio
         ports: [9000, 9001]
+      - name: yugabytedb
+        ports: [5433, 7000]
       - name: datomic
         ports: [4334]
       - name: arcana
@@ -30,9 +32,13 @@
     secrets_path: /opt/secrets
     tailscale_hostname: speedracer.terrier-haddock.ts.net
 
-    # CockroachDB
+    # CockroachDB (Datomic backend)
     cockroachdb_sql_port: 26257
     cockroachdb_ui_port: 8090
+
+    # YugabyteDB (Arcana backend)
+    yugabytedb_ysql_port: 5433
+    yugabytedb_ui_port: 7000
 
     # MinIO
     minio_api_port: 9000
@@ -136,6 +142,27 @@
       become: yes
       tags: [docker]
 
+    # --- YugabyteDB (Arcana backend) ---
+
+    - name: Start YugabyteDB
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/yugabytedb"
+        state: present
+      become: yes
+      tags: [docker, service]
+
+    - name: Wait for YugabyteDB YSQL to accept connections
+      ansible.builtin.command: >
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -c "SELECT 1"
+      register: yugabyte_ready
+      until: yugabyte_ready.rc == 0
+      retries: 20
+      delay: 5
+      changed_when: false
+      become: yes
+      tags: [docker]
+
     # --- MinIO ---
 
     - name: Start MinIO
@@ -163,12 +190,15 @@
       become: yes
       tags: [arcana, configure]
 
-    - name: Create agent_os_dev database in CockroachDB
+    - name: Create agent_os_dev database in YugabyteDB
       ansible.builtin.command: >
-        docker exec cockroachdb
-        cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS agent_os_dev"
-      register: arcana_crdb_db
-      changed_when: "'CREATE DATABASE' in arcana_crdb_db.stdout"
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -c "CREATE DATABASE agent_os_dev"
+      register: arcana_yuga_db
+      changed_when: "'CREATE DATABASE' in arcana_yuga_db.stdout"
+      failed_when: >
+        arcana_yuga_db.rc != 0 and
+        'already exists' not in arcana_yuga_db.stderr
       become: yes
       tags: [arcana]
 

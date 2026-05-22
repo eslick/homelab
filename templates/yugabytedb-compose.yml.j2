@@ -1,0 +1,22 @@
+services:
+  yugabytedb:
+    image: yugabytedb/yugabyte:{{ yugabytedb_version | default('latest') }}
+    container_name: yugabytedb
+    command: >
+      bin/yugabyted start --background=false
+      --tserver_flags="ysql_enable_auth=false"
+    volumes:
+      - yugabyte-data:/root/var
+    ports:
+      - "{{ yugabytedb_ysql_port }}:5433"
+      - "{{ yugabytedb_ui_port }}:7000"
+    networks:
+      - {{ docker_network }}
+    restart: unless-stopped
+
+volumes:
+  yugabyte-data:
+
+networks:
+  {{ docker_network }}:
+    external: true
