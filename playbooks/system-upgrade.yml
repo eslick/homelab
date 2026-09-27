@@ -1,0 +1,93 @@
+---
+# Applies pending apt upgrades (including cuda-drivers) and reboots to load
+# the new kernel/NVIDIA modules, then verifies GPU + container health.
+#
+# GPU driver jump 595.x -> 615.x is a branch upgrade, not a package-flavor
+# change (stays on proprietary nvidia-driver/nvidia-dkms, not nvidia-open).
+# No GPU inference container was running at time of writing (sglang-watcher
+# starts sglang on demand; vllm not currently deployed), so this is a good
+# window for the reboot.
+#
+# Usage:
+#   ansible-playbook playbooks/system-upgrade.yml --check --diff
+#   ansible-playbook playbooks/system-upgrade.yml
+
+- name: Apply system upgrades and reboot for driver/kernel changes
+  hosts: homelab
+  gather_facts: yes
+
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 0
+      become: yes
+      tags: [upgrade]
+
+    - name: Upgrade general packages (NVIDIA/CUDA excluded — held back by safe upgrade)
+      ansible.builtin.apt:
+        upgrade: safe
+      become: yes
+      register: apt_upgrade
+      tags: [upgrade, security]
+
+    - name: Upgrade NVIDIA/CUDA driver stack (595.x -> 615.x)
+      ansible.builtin.apt:
+        name:
+          - cuda-drivers
+          - nvidia-driver
+          - nvidia-dkms
+        state: latest
+        update_cache: no
+      become: yes
+      register: gpu_upgrade
+      tags: [upgrade, gpu]
+
+    - name: Remove unused dependencies
+      ansible.builtin.apt:
+        autoremove: yes
+      become: yes
+      tags: [upgrade]
+
+    - name: Reboot to load new kernel/NVIDIA modules
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        msg: "Rebooting for apt upgrade (cuda-drivers 595->615 + kernel/security updates)"
+      become: yes
+      when: (apt_upgrade.changed | default(false) or gpu_upgrade.changed | default(false)) and not ansible_check_mode
+      tags: [upgrade, gpu]
+
+    - name: Wait for Docker to report containers
+      ansible.builtin.command: docker ps --format '{{ "{{" }}.Names{{ "}}" }}'
+      register: docker_ps
+      until: docker_ps.rc == 0
+      retries: 12
+      delay: 5
+      changed_when: false
+      when: not ansible_check_mode
+      tags: [upgrade, gpu, verify]
+
+    - name: Verify NVIDIA driver loaded post-reboot
+      ansible.builtin.command: nvidia-smi --query-gpu=driver_version,name --format=csv,noheader
+      register: nvidia_check
+      changed_when: false
+      when: not ansible_check_mode
+      tags: [upgrade, gpu, verify]
+
+    - name: Verify GPU passthrough into a container
+      ansible.builtin.command: >
+        docker run --rm --gpus all --network none
+        nvidia/cuda:12.8.1-base-ubuntu24.04 nvidia-smi --query-gpu=name --format=csv,noheader
+      register: gpu_container_check
+      changed_when: false
+      when: not ansible_check_mode
+      tags: [upgrade, gpu, verify]
+
+    - name: Report post-upgrade status
+      ansible.builtin.debug:
+        msg:
+          - "Host driver: {{ nvidia_check.stdout_lines | default(['n/a']) }}"
+          - "Container GPU passthrough: {{ gpu_container_check.stdout_lines | default(['n/a']) }}"
+          - "Docker containers: {{ docker_ps.stdout_lines | default([]) }}"
+      when: not ansible_check_mode
+      tags: [upgrade, gpu, verify]

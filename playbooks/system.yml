@@ -339,6 +339,16 @@
       become: yes
       tags: [configure, monitoring]
 
+    - name: Configure mdadm mail alert address (mdmonitor exits 1 without one)
+      ansible.builtin.lineinfile:
+        path: /etc/mdadm/mdadm.conf
+        regexp: '^MAILADDR'
+        line: 'MAILADDR root'
+        insertafter: EOF
+      become: yes
+      notify: Restart mdmonitor
+      tags: [configure, raid, monitoring]
+
   handlers:
     - name: Restart avahi
       ansible.builtin.service:
@@ -351,4 +361,10 @@
         name: tailscaled
         state: restarted
         daemon_reload: yes
+      become: yes
+
+    - name: Restart mdmonitor
+      ansible.builtin.service:
+        name: mdmonitor
+        state: restarted
       become: yes
