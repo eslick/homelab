@@ -16,6 +16,18 @@
     homeassistant_port: 8123
     homeassistant_nginx_port: 8124
 
+    index_web_root: /var/www/tailscale-index
+    tailscale_services:
+      - name: Home Assistant
+        port: "{{ homeassistant_nginx_port }}"
+        description: Home automation
+      - name: Arcana
+        port: "{{ arcana_port }}"
+        description: Agent OS BEAM cluster (dev)
+      - name: vLLM / SGLang inference
+        port: "{{ vllm_nginx_port }}"
+        description: OpenAI-compatible LLM API (lazy-loaded GPU backend)
+
   tasks:
     - name: Install nginx
       ansible.builtin.apt:
@@ -126,6 +138,51 @@
       notify: Reload nginx
       when: not ansible_check_mode
       tags: [configure, homeassistant]
+
+    - name: Ensure Tailscale services index web root exists
+      ansible.builtin.file:
+        path: "{{ index_web_root }}"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [configure, index]
+
+    - name: Deploy Tailscale services index page
+      ansible.builtin.template:
+        src: ../templates/tailscale-index.html.j2
+        dest: "{{ index_web_root }}/index.html"
+        mode: '0644'
+      become: yes
+      tags: [configure, index]
+
+    - name: Deploy nginx site config for Tailscale services index
+      ansible.builtin.template:
+        src: ../templates/tailscale-index-nginx.conf.j2
+        dest: /etc/nginx/sites-available/tailscale-index
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, index]
+
+    - name: Enable nginx site for Tailscale services index
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/tailscale-index
+        dest: /etc/nginx/sites-enabled/tailscale-index
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, index]
+
+    - name: Allow the services index port through UFW on Tailscale interface
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+        port: '80'
+        proto: tcp
+      become: yes
+      tags: [security, index]
 
     - name: Remove Obsidian CouchDB nginx site (decommissioned)
       ansible.builtin.file:

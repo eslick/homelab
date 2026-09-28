@@ -1,0 +1,16 @@
+# Static landing page listing services reachable over Tailscale.
+# Managed by playbooks/nginx.yml — content comes from templates/tailscale-index.html.j2.
+# Plain HTTP is fine here: Tailscale traffic is already encrypted end-to-end,
+# and this page has no backend/proxy_pass, just static files.
+
+server {
+    listen {{ tailscale_ip }}:80;
+    server_name {{ tailscale_hostname }};
+
+    root {{ index_web_root }};
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
