@@ -71,3 +71,51 @@
       delay: 5
       when: not ansible_check_mode
       tags: [docker, homeassistant, service]
+
+    # Superseded by the .storage/http task below (HA 2026.8 ignores this
+    # YAML key entirely, even on a fresh install) — kept only so a prior
+    # apply of this playbook is cleaned up idempotently.
+    - name: Remove ineffective HTTP proxy-trust block from configuration.yaml
+      ansible.builtin.blockinfile:
+        path: "{{ compose_base }}/homeassistant/config/configuration.yaml"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - trust local nginx reverse proxy"
+        state: absent
+      become: yes
+      when: not ansible_check_mode
+      tags: [docker, homeassistant, configure]
+
+    # HA rejects requests carrying X-Forwarded-For from an untrusted proxy
+    # with a 400 by default — required for the nginx vhost (playbooks/nginx.yml)
+    # to reach it. As of HA 2026.8 this is NOT a configuration.yaml setting
+    # any more (that key is parsed but silently ignored, even on a fresh
+    # install with no legacy YAML to migrate) — it lives in the runtime
+    # .storage/http file instead. We merge the two keys in with jq rather
+    # than overwrite the file, since HA owns the rest of its fields
+    # (created_at, ssl_profile, etc.) and the schema isn't ours to author.
+    - name: Ensure Home Assistant HTTP storage trusts the local nginx proxy
+      ansible.builtin.shell: |
+        set -euo pipefail
+        f="{{ compose_base }}/homeassistant/config/.storage/http"
+        if jq -e '.data.stable.use_x_forwarded_for == true and .data.stable.trusted_proxies == ["127.0.0.1","::1"]' "$f" >/dev/null 2>&1; then
+          exit 0
+        fi
+        tmp=$(mktemp)
+        jq '.data.stable.use_x_forwarded_for = true | .data.stable.trusted_proxies = ["127.0.0.1","::1"]' "$f" > "$tmp"
+        mv "$tmp" "$f"
+        echo changed
+      args:
+        executable: /bin/bash
+      register: ha_proxy_storage
+      changed_when: "'changed' in ha_proxy_storage.stdout"
+      become: yes
+      when: not ansible_check_mode
+      tags: [docker, homeassistant, configure]
+
+    - name: Restart Home Assistant to apply proxy trust config
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/homeassistant"
+        state: present
+        recreate: always
+      become: yes
+      when: not ansible_check_mode and ha_proxy_storage.changed
+      tags: [docker, homeassistant, service]

@@ -13,6 +13,8 @@
     arcana_cluster_nodes: 1
     vllm_port: 8081
     vllm_nginx_port: 8082
+    homeassistant_port: 8123
+    homeassistant_nginx_port: 8124
 
   tasks:
     - name: Install nginx
@@ -106,6 +108,25 @@
       when: not ansible_check_mode
       tags: [configure, vllm]
 
+    - name: Deploy nginx site config for Home Assistant
+      ansible.builtin.template:
+        src: ../templates/homeassistant-nginx.conf.j2
+        dest: /etc/nginx/sites-available/homeassistant
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, homeassistant]
+
+    - name: Enable nginx site for Home Assistant
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/homeassistant
+        dest: /etc/nginx/sites-enabled/homeassistant
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, homeassistant]
+
     - name: Remove Obsidian CouchDB nginx site (decommissioned)
       ansible.builtin.file:
         path: "{{ item }}"
@@ -182,8 +203,9 @@
         - '2099'
         - '{{ arcana_port }}'
         - '{{ vllm_nginx_port }}'
+        - '{{ homeassistant_nginx_port }}'
       become: yes
-      tags: [security]
+      tags: [security, homeassistant]
 
     - name: Schedule weekly Tailscale cert renewal
       ansible.builtin.cron:
