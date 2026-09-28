@@ -16,15 +16,23 @@
 
     services:
       - name: cockroachdb
-        ports: [26257, 8090]
+        ports: [26257]  # UI port 8090 is 127.0.0.1-bound; nginx handles external access
       - name: minio
-        ports: [9000, 9001]
+        ports: [9000]  # console port 9001 is 127.0.0.1-bound; nginx handles external access
       - name: yugabytedb
-        ports: [5433, 7000]
+        ports: [5433]  # UI port 7000 is 127.0.0.1-bound; nginx handles external access
       - name: datomic
         ports: [4334]
       - name: arcana
         ports: []  # 127.0.0.1-bound; nginx handles external access via port 14000
+
+    # Admin console ports that are 127.0.0.1-bound in their compose files
+    # (not in the `services[].ports` blanket-UFW-allow above) and instead
+    # get scoped UFW rules below + an nginx TLS vhost (playbooks/nginx.yml).
+    admin_console_ports:
+      - "{{ cockroachdb_ui_port }}"
+      - "{{ minio_console_port }}"
+      - "{{ yugabytedb_ui_port }}"
 
     # Obsidian vault (synced via Syncthing — no secrets here)
     vault_path: /opt/vaults/obsidian
@@ -39,6 +47,10 @@
     # YugabyteDB (Arcana backend)
     yugabytedb_ysql_port: 5433
     yugabytedb_ui_port: 7000
+    # Pinned container hostname -- yugabyted's persisted catalog already
+    # references this value from its original bootstrap; do not change it
+    # (see the comment in templates/yugabytedb-compose.yml.j2).
+    yugabytedb_hostname: "0121ceda213f"
 
     # MinIO
     minio_api_port: 9000
@@ -93,6 +105,29 @@
         port: '{{ item.1 }}'
         proto: tcp
       loop: "{{ services | subelements('ports') }}"
+      become: yes
+      tags: [docker, security]
+
+    # These ports used to be in `services[].ports` above (open to Anywhere),
+    # but are now 127.0.0.1-bound in their compose files and fronted by an
+    # nginx TLS vhost on the Tailscale IP instead (playbooks/nginx.yml).
+    - name: Remove blanket UFW allow for admin console ports
+      community.general.ufw:
+        rule: allow
+        port: '{{ item }}'
+        proto: tcp
+        delete: yes
+      loop: "{{ admin_console_ports }}"
+      become: yes
+      tags: [docker, security]
+
+    - name: Allow admin console ports from localhost only (nginx proxies from here)
+      community.general.ufw:
+        rule: allow
+        port: '{{ item }}'
+        proto: tcp
+        src: 127.0.0.1
+      loop: "{{ admin_console_ports }}"
       become: yes
       tags: [docker, security]
 
