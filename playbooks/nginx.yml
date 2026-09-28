@@ -15,6 +15,8 @@
     vllm_nginx_port: 8082
     homeassistant_port: 8123
     homeassistant_nginx_port: 8124
+    homedev_port: 3000
+    homedev_nginx_port: 3001
 
     cockroachdb_ui_port: 8090
     cockroachdb_ui_nginx_port: 8091
@@ -34,6 +36,9 @@
       - name: vLLM / SGLang inference
         port: "{{ vllm_nginx_port }}"
         description: OpenAI-compatible LLM API (lazy-loaded GPU backend)
+      - name: Homedev
+        port: "{{ homedev_nginx_port }}"
+        description: Clojure AI orchestrator REPL + web UI
       - name: CockroachDB Admin UI
         port: "{{ cockroachdb_ui_nginx_port }}"
         description: Datomic's backend database
@@ -154,6 +159,25 @@
       notify: Reload nginx
       when: not ansible_check_mode
       tags: [configure, homeassistant]
+
+    - name: Deploy nginx site config for homedev
+      ansible.builtin.template:
+        src: ../templates/homedev-nginx.conf.j2
+        dest: /etc/nginx/sites-available/homedev
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, homedev]
+
+    - name: Enable nginx site for homedev
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/homedev
+        dest: /etc/nginx/sites-enabled/homedev
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, homedev]
 
     - name: Deploy nginx site config for CockroachDB admin UI
       ansible.builtin.template:
@@ -334,6 +358,7 @@
         - '{{ arcana_port }}'
         - '{{ vllm_nginx_port }}'
         - '{{ homeassistant_nginx_port }}'
+        - '{{ homedev_nginx_port }}'
         - '{{ cockroachdb_ui_nginx_port }}'
         - '{{ minio_console_nginx_port }}'
         - '{{ yugabytedb_ui_nginx_port }}'

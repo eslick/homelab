@@ -16,6 +16,9 @@
   hosts: homelab
   gather_facts: yes
 
+  vars:
+    force_reboot: false   # set -e force_reboot=true when running the `reboot` tag as its own phase
+
   tasks:
     - name: Update apt cache
       ansible.builtin.apt:
@@ -49,13 +52,19 @@
       become: yes
       tags: [upgrade]
 
+    # ansible.builtin.reboot refuses to run over a local connection (it would
+    # kill the control node mid-module). We control this host via the local
+    # connection plugin, so schedule the reboot async/fire-and-forget instead —
+    # the playbook run ends here; the caller polls for the host coming back up.
     - name: Reboot to load new kernel/NVIDIA modules
-      ansible.builtin.reboot:
-        reboot_timeout: 300
-        msg: "Rebooting for apt upgrade (cuda-drivers 595->615 + kernel/security updates)"
+      ansible.builtin.command: systemctl reboot
       become: yes
-      when: (apt_upgrade.changed | default(false) or gpu_upgrade.changed | default(false)) and not ansible_check_mode
-      tags: [upgrade, gpu]
+      async: 1
+      poll: 0
+      when: >-
+        (apt_upgrade.changed | default(false) or gpu_upgrade.changed | default(false) or force_reboot | bool)
+        and not ansible_check_mode
+      tags: [reboot]
 
     - name: Wait for Docker to report containers
       ansible.builtin.command: docker ps --format '{{ "{{" }}.Names{{ "}}" }}'

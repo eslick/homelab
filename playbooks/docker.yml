@@ -25,6 +25,8 @@
         ports: [4334]
       - name: arcana
         ports: []  # 127.0.0.1-bound; nginx handles external access via port 14000
+      - name: homedev
+        ports: []  # host networking; nREPL :7888 is localhost-only; nginx fronts web UI on :3001
 
     # Admin console ports that are 127.0.0.1-bound in their compose files
     # (not in the `services[].ports` blanket-UFW-allow above) and instead
@@ -346,6 +348,51 @@
         build: always
       become: yes
       tags: [docker, service]
+
+    # --- homedev Clojure orchestrator ---
+
+    - name: Ensure homedev compose directory exists
+      ansible.builtin.file:
+        path: "{{ compose_base }}/homedev"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [homedev, configure]
+
+    - name: Deploy homedev compose file from template
+      ansible.builtin.template:
+        src: "../templates/homedev-compose.yml.j2"
+        dest: "{{ compose_base }}/homedev/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [homedev, configure]
+
+    - name: Build and start homedev
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/homedev"
+        build: always
+        state: present
+      become: yes
+      tags: [homedev, service]
+
+    - name: Create homedev database in CockroachDB
+      ansible.builtin.command: >
+        docker exec cockroachdb
+        cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS homedev"
+      register: homedev_db
+      changed_when: "'CREATE DATABASE' in homedev_db.stdout"
+      become: yes
+      tags: [homedev]
+
+    - name: Create homedev bucket in MinIO
+      ansible.builtin.command: >
+        docker run --rm --network {{ docker_network }} --entrypoint sh minio/mc -c "
+          mc alias set local http://minio:9000 {{ minio_root_user }} {{ minio_root_password }} &&
+          mc mb --ignore-existing local/homedev"
+      register: homedev_bucket
+      changed_when: "'Bucket created' in homedev_bucket.stdout"
+      become: yes
+      tags: [homedev]
 
     # --- OpenClaw Gateway (removed) ---
 
