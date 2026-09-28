@@ -128,8 +128,51 @@ Reverting the `.storage/http` merge is not automated — if needed, stop
 the container and manually unset `use_x_forwarded_for`/`trusted_proxies`
 in `.storage/http`, or restore that file from the nearest restic snapshot.
 
+## Addendum 2: Sonos UPnP event subscriptions blocked by UFW
+
+During onboarding, HA reported: `Sonos device at 192.168.50.111 cannot
+reach Home Assistant at 192.168.50.100:1400` ("Networking error:
+subscriptions failed... Falling back to polling").
+
+### Root cause
+`network_mode: host` means every HA integration that opens its own
+listener (not just the main :8123 API) binds directly on the host and is
+subject to UFW's default-deny — a normal Docker-bridge service only ever
+needed its one published port opened, but HA under host networking needs
+each of these individually. The Sonos integration listens on TCP 1400
+for UPnP state-change event callbacks from speakers on the LAN; with no
+UFW rule for it, the kernel silently dropped the SYNs:
+```
+[UFW BLOCK] SRC=192.168.50.48 DST=192.168.50.100 ... DPT=1400 SYN
+```
+(confirmed via `journalctl -k | grep 1400` / `/var/log/ufw.log`).
+
+### Fix
+`playbooks/homeassistant.yml`: added a UFW rule allowing `1400/tcp` from
+`192.168.50.0/24` (the LAN subnet) only — not Tailscale, not the Docker
+bridge, since Sonos speakers are LAN-only devices.
+
+### Verification Steps
+1. `sudo ufw status | grep 1400` → `1400/tcp ALLOW 192.168.50.0/24`.
+2. `docker restart homeassistant` (to make Sonos retry the subscription).
+3. `sudo ss -tlnp | grep 1400` → HA (`python3`) now listening on
+   `192.168.50.100:1400`.
+4. `docker logs homeassistant --since 1m | grep -i sonos` → no
+   subscription-failure warnings after restart.
+
+### Rollback (addendum 2)
+```
+sudo ufw delete allow from 192.168.50.0/24 to any port 1400 proto tcp
+git revert b97e06d
+```
+Sonos falls back to polling without this rule — not broken, just higher
+latency and unnecessary LAN traffic.
+
 ## Next Steps (not yet done)
 - Complete the HA onboarding wizard, now reachable at
   `https://speedracer.terrier-haddock.ts.net:8124` over Tailscale.
 - Add Zigbee2MQTT + Mosquitto (on `homelab-net`, not host networking) once
   a Zigbee USB coordinator is available.
+- Watch for other HA integrations that open their own host-bound
+  listener ports (Cast, HomeKit Bridge, etc.) — each will need its own
+  UFW rule under `network_mode: host`, same as the Sonos port above.
