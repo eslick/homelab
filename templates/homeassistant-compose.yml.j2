@@ -1,0 +1,28 @@
+# Home Assistant Core.
+# Managed by playbooks/homeassistant.yml — do not run standalone.
+#
+# network_mode: host is a deliberate exception to this homelab's usual
+# 127.0.0.1-bound / homelab-net convention: HA needs host networking for
+# mDNS/SSDP/UPnP device discovery (Cast, HomeKit, Sonos, etc.), which does
+# not traverse a Docker bridge network. Because of host mode, the
+# `networks:`/`ports:` keys below are not used by Docker — HA binds
+# {{ homeassistant_port }} directly on the host across all interfaces.
+#
+# Reachability from other containers (e.g. on {{ docker_network }}):
+#   http://{{ docker_bridge_gateway }}:{{ homeassistant_port }}
+# ({{ docker_bridge_gateway }} is the {{ docker_network }} bridge gateway,
+# which resolves to this host from any container on that network.)
+
+name: homeassistant
+
+services:
+  homeassistant:
+    image: "{{ homeassistant_image }}"
+    container_name: homeassistant
+    network_mode: host
+    volumes:
+      - "{{ compose_base }}/homeassistant/config:/config"
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: "{{ homeassistant_timezone }}"
+    restart: unless-stopped

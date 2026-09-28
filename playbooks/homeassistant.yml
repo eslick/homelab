@@ -1,0 +1,73 @@
+# Deploys Home Assistant Core (host networking) for on-boot home automation.
+#
+# network_mode: host is an approved exception to the usual 127.0.0.1-bound /
+# homelab-net convention — see templates/homeassistant-compose.yml.j2 for why.
+#
+# Zigbee2MQTT/Mosquitto are intentionally not included yet — no Zigbee USB
+# coordinator is attached. Add them as a separate play once hardware arrives;
+# they belong on {{ docker_network }} like the rest of the stack, not on
+# host networking.
+#
+# Apply:
+#   ansible-playbook playbooks/homeassistant.yml --check --diff
+#   ansible-playbook playbooks/homeassistant.yml
+
+- name: Deploy Home Assistant
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    docker_network: homelab-net
+    docker_bridge_gateway: 172.18.0.1  # homelab-net gateway; other containers reach HA here
+
+    homeassistant_image: "ghcr.io/home-assistant/home-assistant:stable"
+    homeassistant_port: 8123
+    homeassistant_timezone: "America/Los_Angeles"
+
+  tasks:
+    - name: Ensure Home Assistant config directory exists
+      ansible.builtin.file:
+        path: "{{ compose_base }}/homeassistant/config"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [docker, homeassistant, configure]
+
+    - name: Deploy Home Assistant compose file from template
+      ansible.builtin.template:
+        src: "../templates/homeassistant-compose.yml.j2"
+        dest: "{{ compose_base }}/homeassistant/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [docker, homeassistant, configure]
+
+    - name: Allow Home Assistant API port from the Docker bridge network
+      community.general.ufw:
+        rule: allow
+        port: "{{ homeassistant_port }}"
+        proto: tcp
+        src: "{{ docker_network_subnet }}"
+      vars:
+        docker_network_subnet: "172.18.0.0/16"
+      become: yes
+      tags: [docker, homeassistant, security]
+
+    - name: Start Home Assistant
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/homeassistant"
+        state: present
+      become: yes
+      tags: [docker, homeassistant, service]
+
+    - name: Wait for Home Assistant to respond
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ homeassistant_port }}"
+        status_code: [200, 302, 401]
+        timeout: 5
+      register: ha_health
+      until: ha_health.status in [200, 302, 401]
+      retries: 24
+      delay: 5
+      when: not ansible_check_mode
+      tags: [docker, homeassistant, service]
