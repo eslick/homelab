@@ -56,10 +56,80 @@ so a snapshot exists before this change per standing backup policy —
 confirm with `restic snapshots` before deleting the config directory if
 recovery may be needed later.
 
+## Addendum: Tailscale ingress + reverse-proxy trust fix
+
+Follow-up task: expose HA over the existing Tailscale nginx ingress
+(matching the `vllm`/`agentos` vhost pattern) instead of leaving it
+reachable only from localhost/LAN/Docker bridge.
+
+### Playbook Used
+`playbooks/nginx.yml` (added Home Assistant vhost tasks) rendering
+`templates/homeassistant-nginx.conf.j2` to
+`/etc/nginx/sites-available/homeassistant`, plus a follow-up fix in
+`playbooks/homeassistant.yml`.
+
+- nginx vhost: `100.74.60.51:8124` (TLS, Tailscale cert) → `127.0.0.1:8123`,
+  with `Upgrade`/`Connection: upgrade` headers for HA's WebSocket frontend.
+- UFW: `8124/tcp` allowed on `tailscale0` only.
+
+### Issue hit: HA returned 400 through the proxy
+Home Assistant's HTTP integration rejects requests carrying
+`X-Forwarded-For` from a proxy it doesn't trust (`your HTTP integration
+is not set-up for reverse proxies`). The standard fix is
+`use_x_forwarded_for` + `trusted_proxies` in `configuration.yaml` — this
+did **not** work here.
+
+**Root cause:** as of Home Assistant 2026.8, the `http:` block in
+`configuration.yaml` no longer configures the HTTP integration at all —
+including `use_x_forwarded_for`/`trusted_proxies`. It's parsed without
+error but silently ignored, even on a brand-new install with no legacy
+YAML to migrate (`.storage/http` already shows `"yaml_migration_done":
+true` from first boot). The setting is now runtime state in
+`/opt/compose/homeassistant/config/.storage/http`, under
+`data.stable.use_x_forwarded_for` / `data.stable.trusted_proxies`,
+normally set via Settings → System → Network in the UI.
+
+**Fix:** `playbooks/homeassistant.yml` now has a task that merges those
+two keys into `.storage/http` with `jq` (idempotent: checks current
+value first, no-ops if already set) rather than templating the whole
+file — HA owns the rest of that file's fields (`created_at`, `ssl_profile`,
+etc.) and the schema isn't ours to author. The container is recreated
+only when the merge actually changes something. The now-dead
+`configuration.yaml` block from the first pass of this playbook is
+removed by a companion cleanup task.
+
+**Process note:** while diagnosing this, one exploratory edit
+(`sed -i` stripping the dead block from `configuration.yaml`) was run
+directly on the host instead of through Ansible, violating the standing
+"every change through Ansible" rule. It was corrected immediately by
+codifying the same removal as an idempotent `blockinfile: state=absent`
+task in the playbook, which is what actually owns that state going
+forward — but the direct edit should not have happened.
+
+### Verification Steps
+1. `curl -H "X-Forwarded-For: 1.2.3.4" http://127.0.0.1:8123/` → `302`
+   (previously `400`), confirming HA now trusts forwarded headers.
+2. `curl -sk https://100.74.60.51:8124 -H "Host: speedracer.terrier-haddock.ts.net"`
+   → `302` through the actual nginx vhost.
+3. `docker run --rm --network homelab-net curlimages/curl:latest ... http://172.18.0.1:8123`
+   → `302`, cross-container path still works.
+4. `docker logs homeassistant --since 1m | grep -i forwarded` → no errors.
+5. `sudo nginx -t` → syntax OK; `ufw status | grep 8124` → allowed on
+   `tailscale0` only.
+
+### Rollback (addendum)
+```
+sudo rm /etc/nginx/sites-enabled/homeassistant /etc/nginx/sites-available/homeassistant
+sudo systemctl reload nginx
+sudo ufw delete allow in on tailscale0 to any port 8124 proto tcp
+git revert 8b688ff
+```
+Reverting the `.storage/http` merge is not automated — if needed, stop
+the container and manually unset `use_x_forwarded_for`/`trusted_proxies`
+in `.storage/http`, or restore that file from the nearest restic snapshot.
+
 ## Next Steps (not yet done)
-- Complete the HA onboarding wizard at `http://<tailscale-ip>:8123` or via
-  nginx once a vhost is added (not yet created — HA is currently reachable
-  only from localhost, the Docker bridge, or a direct LAN/host connection,
-  not through the existing Tailscale nginx ingress).
+- Complete the HA onboarding wizard, now reachable at
+  `https://speedracer.terrier-haddock.ts.net:8124` over Tailscale.
 - Add Zigbee2MQTT + Mosquitto (on `homelab-net`, not host networking) once
   a Zigbee USB coordinator is available.
