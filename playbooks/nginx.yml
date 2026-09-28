@@ -16,6 +16,13 @@
     homeassistant_port: 8123
     homeassistant_nginx_port: 8124
 
+    cockroachdb_ui_port: 8090
+    cockroachdb_ui_nginx_port: 8091
+    minio_console_port: 9001
+    minio_console_nginx_port: 9002
+    yugabytedb_ui_port: 7000
+    yugabytedb_ui_nginx_port: 7001
+
     index_web_root: /var/www/tailscale-index
     tailscale_services:
       - name: Home Assistant
@@ -27,6 +34,15 @@
       - name: vLLM / SGLang inference
         port: "{{ vllm_nginx_port }}"
         description: OpenAI-compatible LLM API (lazy-loaded GPU backend)
+      - name: CockroachDB Admin UI
+        port: "{{ cockroachdb_ui_nginx_port }}"
+        description: Datomic's backend database
+      - name: MinIO Console
+        port: "{{ minio_console_nginx_port }}"
+        description: S3-compatible object storage
+      - name: YugabyteDB Admin UI
+        port: "{{ yugabytedb_ui_nginx_port }}"
+        description: Arcana's backend database
 
   tasks:
     - name: Install nginx
@@ -138,6 +154,63 @@
       notify: Reload nginx
       when: not ansible_check_mode
       tags: [configure, homeassistant]
+
+    - name: Deploy nginx site config for CockroachDB admin UI
+      ansible.builtin.template:
+        src: ../templates/cockroachdb-nginx.conf.j2
+        dest: /etc/nginx/sites-available/cockroachdb
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, cockroachdb]
+
+    - name: Enable nginx site for CockroachDB admin UI
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/cockroachdb
+        dest: /etc/nginx/sites-enabled/cockroachdb
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, cockroachdb]
+
+    - name: Deploy nginx site config for MinIO console
+      ansible.builtin.template:
+        src: ../templates/minio-nginx.conf.j2
+        dest: /etc/nginx/sites-available/minio
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, minio]
+
+    - name: Enable nginx site for MinIO console
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/minio
+        dest: /etc/nginx/sites-enabled/minio
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, minio]
+
+    - name: Deploy nginx site config for YugabyteDB admin UI
+      ansible.builtin.template:
+        src: ../templates/yugabytedb-nginx.conf.j2
+        dest: /etc/nginx/sites-available/yugabytedb
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, yugabytedb]
+
+    - name: Enable nginx site for YugabyteDB admin UI
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/yugabytedb
+        dest: /etc/nginx/sites-enabled/yugabytedb
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, yugabytedb]
 
     - name: Ensure Tailscale services index web root exists
       ansible.builtin.file:
@@ -261,8 +334,11 @@
         - '{{ arcana_port }}'
         - '{{ vllm_nginx_port }}'
         - '{{ homeassistant_nginx_port }}'
+        - '{{ cockroachdb_ui_nginx_port }}'
+        - '{{ minio_console_nginx_port }}'
+        - '{{ yugabytedb_ui_nginx_port }}'
       become: yes
-      tags: [security, homeassistant]
+      tags: [security, homeassistant, cockroachdb, minio, yugabytedb]
 
     - name: Schedule weekly Tailscale cert renewal
       ansible.builtin.cron:

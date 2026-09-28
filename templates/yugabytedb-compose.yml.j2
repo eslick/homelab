@@ -2,6 +2,15 @@ services:
   yugabytedb:
     image: yugabytedb/yugabyte:{{ yugabytedb_version | default('latest') }}
     container_name: yugabytedb
+    # yugabyted persists its RPC advertise address (master/tserver registry
+    # in its own Raft-replicated catalog, not just yugabyted.conf) keyed to
+    # the container's hostname at first bootstrap. Docker defaults hostname
+    # to the container's short ID, which changes on every recreation --
+    # pinning it here keeps that identity stable across `docker compose up`
+    # re-creates (e.g. from a port-mapping change). Do not change this value
+    # without also migrating the persisted catalog; it must stay
+    # "{{ yugabytedb_hostname }}" to match what's already on disk.
+    hostname: "{{ yugabytedb_hostname }}"
     command: >
       bin/yugabyted start --background=false
       --tserver_flags="ysql_enable_auth=false"
@@ -9,7 +18,7 @@ services:
       - yugabyte-data:/root/var
     ports:
       - "{{ yugabytedb_ysql_port }}:5433"
-      - "{{ yugabytedb_ui_port }}:7000"
+      - "127.0.0.1:{{ yugabytedb_ui_port }}:7000"  # nginx handles external access; see playbooks/nginx.yml
     networks:
       - {{ docker_network }}
     restart: unless-stopped
