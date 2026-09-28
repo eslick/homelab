@@ -24,6 +24,8 @@
     homeassistant_image: "ghcr.io/home-assistant/home-assistant:stable"
     homeassistant_port: 8123
     homeassistant_timezone: "America/Los_Angeles"
+    homeassistant_lan_subnet: 192.168.50.0/24
+    homeassistant_sonos_event_port: 1400
 
   tasks:
     - name: Ensure Home Assistant config directory exists
@@ -50,6 +52,21 @@
         src: "{{ docker_network_subnet }}"
       vars:
         docker_network_subnet: "172.18.0.0/16"
+      become: yes
+      tags: [docker, homeassistant, security]
+
+    # network_mode: host means HA's various integration listener ports
+    # (UPnP/event subscriptions, etc.) bind directly on the host and are
+    # subject to UFW's default-deny, unlike a normal Docker-bridge service
+    # that only needs the one published port opened. Sonos subscribes to
+    # this port for state-change events; without it, HA falls back to
+    # polling (works, but higher latency and unnecessary LAN chatter).
+    - name: Allow Sonos UPnP event subscriptions from the LAN
+      community.general.ufw:
+        rule: allow
+        port: "{{ homeassistant_sonos_event_port }}"
+        proto: tcp
+        src: "{{ homeassistant_lan_subnet }}"
       become: yes
       tags: [docker, homeassistant, security]
 
