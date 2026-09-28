@@ -315,6 +315,17 @@
       become: yes
       tags: [configure, claude]
 
+    - name: Deploy homedev CLI wrapper
+      ansible.builtin.copy:
+        dest: /usr/local/bin/homedev
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          cd /home/eslick/projects/homedev
+          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-4-6 "$@"
+      become: yes
+      tags: [configure, claude]
+
     - name: Install lm-sensors for CPU temperature monitoring
       ansible.builtin.apt:
         name: lm-sensors
