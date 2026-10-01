@@ -309,9 +309,9 @@
         content: |
           #!/bin/bash
           # Launch Claude Code in the homelab repo with auto-approval
-          # Default: sonnet for cost efficiency. Use --model claude-opus-4-6 when needed.
+          # Default: sonnet for cost efficiency. Use --model claude-opus-5-5 when needed.
           cd /home/eslick/homelab
-          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-4-6 "$@"
+          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-5 "$@"
       become: yes
       tags: [configure, claude]
 
@@ -322,7 +322,7 @@
         content: |
           #!/bin/bash
           cd /home/eslick/projects/homedev
-          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-4-6 "$@"
+          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-5 "$@"
       become: yes
       tags: [configure, claude]
 
