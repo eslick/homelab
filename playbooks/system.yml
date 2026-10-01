@@ -309,9 +309,9 @@
         content: |
           #!/bin/bash
           # Launch Claude Code in the homelab repo with auto-approval
-          # Default: sonnet for cost efficiency. Use --model claude-opus-5-5 when needed.
+          # Model is set by the directory's .claude/settings.json, not pinned here.
           cd /home/eslick/homelab
-          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-5 "$@"
+          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions "$@"
       become: yes
       tags: [configure, claude]
 
@@ -321,9 +321,31 @@
         mode: '0755'
         content: |
           #!/bin/bash
+          # Model is set by the directory's .claude/settings.json, not pinned here.
           cd /home/eslick/projects/homedev
-          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions --model claude-sonnet-5 "$@"
+          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions "$@"
       become: yes
+      tags: [configure, claude]
+
+    - name: Ensure homedev .claude directory exists
+      ansible.builtin.file:
+        path: /home/eslick/projects/homedev/.claude
+        state: directory
+        owner: eslick
+        group: eslick
+        mode: '0755'
+      tags: [configure, claude]
+
+    - name: Deploy homedev Claude directory config
+      ansible.builtin.copy:
+        dest: /home/eslick/projects/homedev/.claude/settings.json
+        owner: eslick
+        group: eslick
+        mode: '0644'
+        content: |
+          {
+            "model": "claude-sonnet-5-5"
+          }
       tags: [configure, claude]
 
     - name: Install lm-sensors for CPU temperature monitoring

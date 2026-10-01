@@ -83,7 +83,6 @@
           HEALTH_DATA="$({{ health_data_script }} 2>&1)"
 
           /usr/local/bin/claude -p \
-            --model claude-sonnet-5 \
             --allowedTools "Bash,Write" \
             --max-turns 5 \
             "You are running in HEALTH CHECK MODE. All system data has already been collected — do NOT run any system commands to gather more data.
