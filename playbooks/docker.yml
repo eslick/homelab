@@ -45,20 +45,26 @@
     # CockroachDB (Datomic backend)
     cockroachdb_sql_port: 26257
     cockroachdb_ui_port: 8090
-    # Pinned: a major upgrade (26.1 -> 26.2) needs a rolling upgrade + finalization.
-    cockroachdb_version: "v26.1.1"
+    # Pinned. Major upgrades: playbooks/cockroachdb-upgrade.yml --tags prepare, bump this, apply, then --tags finalize.
+    cockroachdb_version: "v26.2.7"
 
     # YugabyteDB (Arcana backend)
     yugabytedb_ysql_port: 5433
     yugabytedb_ui_port: 7000
     # Pinned to the 2025.2 stable series; `latest` now points at 2026.1.x.
     yugabytedb_version: "2025.2.6.0-b111"
+    # Disabled: container is removed but the yugabyte-data volume, compose
+    # file and template are kept. Set true to bring it back.
+    yugabytedb_enabled: false
     # Pinned container hostname -- yugabyted's persisted catalog already
     # references this value from its original bootstrap; do not change it
     # (see the comment in templates/yugabytedb-compose.yml.j2).
     yugabytedb_hostname: "0121ceda213f"
 
     # MinIO
+    # Built from upstream source (no published images any more). 2025-10-15 is
+    # the newest upstream release; it fixes CVE-2025-62506 (present in 2025-09-07).
+    minio_version: "RELEASE.2025-10-15T17-29-55Z"
     minio_api_port: 9000
     minio_console_port: 9001
     minio_root_user: minioadmin
@@ -185,10 +191,21 @@
 
     # --- YugabyteDB (Arcana backend) ---
 
-    - name: Start YugabyteDB
+    # `state: absent` errors when nothing exists to remove, so only reconcile
+    # when enabled or when a leftover container is still present.
+    - name: Check for existing YugabyteDB container
+      ansible.builtin.command: docker ps -a --filter name=^yugabytedb$ --format '{% raw %}{{.Names}}{% endraw %}'
+      register: yugabyte_existing
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [docker, service]
+
+    - name: Start or remove YugabyteDB per yugabytedb_enabled
       community.docker.docker_compose_v2:
         project_src: "{{ compose_base }}/yugabytedb"
-        state: present
+        state: "{{ 'present' if yugabytedb_enabled | bool else 'absent' }}"
+      when: yugabytedb_enabled | bool or yugabyte_existing.stdout | trim != ''
       become: yes
       tags: [docker, service]
 
@@ -201,15 +218,37 @@
       retries: 20
       delay: 5
       changed_when: false
+      when: yugabytedb_enabled | bool
       become: yes
       tags: [docker]
 
     # --- MinIO ---
 
-    - name: Start MinIO
+    # Keep the last published image (2025-09-07) under a stable local name for
+    # rollback; it can no longer be re-pulled.
+    - name: Preserve legacy MinIO image for rollback
+      community.docker.docker_image:
+        name: minio/minio:latest
+        repository: minio-legacy
+        tag: "2025-09-07"
+        source: local
+      become: yes
+      failed_when: false
+      tags: [docker, service]
+
+    - name: Deploy MinIO Dockerfile
+      ansible.builtin.template:
+        src: "../templates/minio-Dockerfile.j2"
+        dest: "{{ compose_base }}/minio/Dockerfile"
+        mode: '0644'
+      become: yes
+      tags: [docker, configure]
+
+    - name: Build and start MinIO
       community.docker.docker_compose_v2:
         project_src: "{{ compose_base }}/minio"
         state: present
+        build: always
       become: yes
       tags: [docker, service]
 

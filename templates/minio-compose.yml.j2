@@ -1,6 +1,10 @@
 services:
   minio:
-    image: minio/minio:{{ minio_version | default('latest') }}
+    build:
+      context: .
+      args:
+        MINIO_VERSION: "{{ minio_version }}"
+    image: minio-local:{{ minio_version }}
     container_name: minio
     command: server /data --console-address ":9001"
     volumes:
