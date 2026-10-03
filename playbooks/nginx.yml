@@ -22,6 +22,7 @@
     minio_console_nginx_port: 9002
     yugabytedb_ui_port: 7000
     yugabytedb_ui_nginx_port: 7001
+    yugabytedb_enabled: false   # keep in sync with playbooks/docker.yml
 
     index_web_root: /var/www/tailscale-index
     tailscale_services:
@@ -372,9 +373,20 @@
         - '{{ homedev_nginx_port }}'
         - '{{ cockroachdb_ui_nginx_port }}'
         - '{{ minio_console_nginx_port }}'
-        - '{{ yugabytedb_ui_nginx_port }}'
       become: yes
       tags: [security, homeassistant, cockroachdb, minio, yugabytedb]
+
+    # Allowed only while YugabyteDB is enabled; removed when it is disabled.
+    - name: Manage UFW rule for the YugabyteDB UI vhost on Tailscale
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+        port: '{{ yugabytedb_ui_nginx_port }}'
+        proto: tcp
+        delete: "{{ not (yugabytedb_enabled | bool) }}"
+      become: yes
+      tags: [security, yugabytedb]
 
     - name: Schedule weekly Tailscale cert renewal
       ansible.builtin.cron:

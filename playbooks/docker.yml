@@ -20,7 +20,7 @@
       - name: minio
         ports: [9000]  # console port 9001 is 127.0.0.1-bound; nginx handles external access
       - name: yugabytedb
-        ports: [5433]  # UI port 7000 is 127.0.0.1-bound; nginx handles external access
+        ports: "{{ [5433] if yugabytedb_enabled | bool else [] }}"  # UI port 7000 is 127.0.0.1-bound; nginx handles external access
       - name: datomic
         ports: [4334]
       - name: homedev
@@ -29,10 +29,9 @@
     # Admin console ports that are 127.0.0.1-bound in their compose files
     # (not in the `services[].ports` blanket-UFW-allow above) and instead
     # get scoped UFW rules below + an nginx TLS vhost (playbooks/nginx.yml).
-    admin_console_ports:
-      - "{{ cockroachdb_ui_port }}"
-      - "{{ minio_console_port }}"
-      - "{{ yugabytedb_ui_port }}"
+    admin_console_ports: >-
+      {{ [cockroachdb_ui_port, minio_console_port]
+         + ([yugabytedb_ui_port] if yugabytedb_enabled | bool else []) }}
 
     # Obsidian vault (synced via Syncthing — no secrets here)
     vault_path: /opt/vaults/obsidian
@@ -128,6 +127,21 @@
         proto: tcp
         src: 127.0.0.1
       loop: "{{ admin_console_ports }}"
+      become: yes
+      tags: [docker, security]
+
+    # Rules for a disabled YugabyteDB are dropped; the loops above stop re-adding them.
+    - name: Remove UFW rules for disabled YugabyteDB
+      community.general.ufw:
+        rule: allow
+        port: '{{ item.port }}'
+        proto: tcp
+        src: "{{ item.src | default(omit) }}"
+        delete: yes
+      loop:
+        - { port: "{{ yugabytedb_ysql_port }}" }
+        - { port: "{{ yugabytedb_ui_port }}", src: 127.0.0.1 }
+      when: not (yugabytedb_enabled | bool)
       become: yes
       tags: [docker, security]
 

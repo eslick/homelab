@@ -348,9 +348,9 @@
           }
       tags: [configure, claude]
 
-    - name: Deploy arcana2dev CLI wrapper
+    - name: Deploy arcana CLI wrapper (Arcana 2 dev session)
       ansible.builtin.copy:
-        dest: /usr/local/bin/arcana2dev
+        dest: /usr/local/bin/arcana
         mode: '0755'
         content: |
           #!/bin/bash
@@ -358,6 +358,13 @@
           # Toolchain commands (mix, lean, fstar) run in the container: make dev.check / make dev.shell
           cd /home/eslick/projects/arcana2
           exec /home/eslick/.local/bin/claude --dangerously-skip-permissions "$@"
+      become: yes
+      tags: [configure, claude]
+
+    - name: Remove old arcana2dev wrapper name
+      ansible.builtin.file:
+        path: /usr/local/bin/arcana2dev
+        state: absent
       become: yes
       tags: [configure, claude]
 

@@ -1,0 +1,103 @@
+---
+# Retire the pre-rename "agentos" deployment (predecessor of Arcana v1).
+#
+# Contents at retirement time: an empty projects/agentos shell (root-owned empty
+# dirs), /opt/compose/agentos/docker-compose.yml, the agentos-dev:local image and
+# three rebuildable cache volumes (agentos_build/deps/node_modules). No containers.
+# The v1 source itself is in the arcana-v1 archive.
+#
+# What is archived: the compose file ONLY, with credentials redacted (it embeds
+# plaintext API keys; the NAS is synced to S3, so secrets must not be copied).
+#
+#   1. ansible-playbook playbooks/retire-agentos.yml --tags archive
+#   2. ansible-playbook playbooks/retire-agentos.yml --tags remove   (tagged `never`)
+
+- name: Archive and remove agentos
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    agentos_src: /home/eslick/homelab/projects/agentos
+    agentos_compose_dir: /opt/compose/agentos
+    archive_dir: /mnt/nas/backups/archives/agentos
+    archive_compose: "{{ archive_dir }}/docker-compose-2026-10-03.redacted.yml"
+
+  tasks:
+    - name: Ensure archive directory exists on the NAS
+      ansible.builtin.file:
+        path: "{{ archive_dir }}"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [archive]
+
+    - name: Copy compose file into the archive
+      ansible.builtin.copy:
+        src: "{{ agentos_compose_dir }}/docker-compose.yml"
+        dest: "{{ archive_compose }}"
+        remote_src: yes
+        force: no
+        mode: '0644'
+      become: yes
+      tags: [archive]
+
+    - name: Redact credentials in the archived copy
+      ansible.builtin.replace:
+        path: "{{ archive_compose }}"
+        regexp: '^(\s+(?:[A-Z0-9_]*API_KEY|[A-Z0-9_]*SECRET[A-Z0-9_]*|[A-Z0-9_]*PASSWORD|[A-Z0-9_]*TOKEN):\s*).*$'
+        replace: '\1"<redacted>"'
+      become: yes
+      when: not ansible_check_mode
+      tags: [archive]
+
+    - name: Check the archived copy contains no key material
+      ansible.builtin.command: grep -c -E 'sk-[A-Za-z0-9_-]{16,}' {{ archive_compose }}
+      register: leaked_keys
+      changed_when: false
+      failed_when: leaked_keys.stdout | int != 0
+      become: yes
+      when: not ansible_check_mode
+      tags: [archive, remove]
+
+    - name: Check the archive exists
+      ansible.builtin.stat:
+        path: "{{ archive_compose }}"
+      register: archive_stat
+      become: yes
+      tags: [remove, never]
+
+    - name: Refuse to remove anything unless the redacted archive is in place
+      ansible.builtin.assert:
+        that: archive_stat.stat.exists and archive_stat.stat.size > 500
+        fail_msg: "Archive missing; run with --tags archive first."
+      tags: [remove, never]
+
+    - name: Remove the empty projects/agentos shell
+      ansible.builtin.file:
+        path: "{{ agentos_src }}"
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the agentos compose directory
+      ansible.builtin.file:
+        path: "{{ agentos_compose_dir }}"
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove agentos cache volumes
+      community.docker.docker_volume:
+        name: "{{ item }}"
+        state: absent
+      loop: [agentos_build, agentos_deps, agentos_node_modules]
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the agentos-dev:local image
+      community.docker.docker_image:
+        name: agentos-dev
+        tag: local
+        state: absent
+      become: yes
+      tags: [remove, never]
