@@ -7,10 +7,8 @@
     tailscale_hostname: speedracer.terrier-haddock.ts.net
     tailscale_ip: "{{ ansible_tailscale0.ipv4.address }}"
     cert_dir: /etc/ssl/tailscale
-    arcana_port: 14000
-    arcana_beam1_port: 14100
-    arcana_beam2_port: 14101
-    arcana_cluster_nodes: 1
+    arcana2_port: 4100            # 127.0.0.1-bound container port (playbooks/arcana2.yml)
+    arcana2_nginx_port: 14000     # Tailscale TLS port (same URL Arcana v1 used)
     vllm_port: 8081
     vllm_nginx_port: 8082
     homeassistant_port: 8123
@@ -30,9 +28,9 @@
       - name: Home Assistant
         port: "{{ homeassistant_nginx_port }}"
         description: Home automation
-      - name: Arcana
-        port: "{{ arcana_port }}"
-        description: Agent OS BEAM cluster (dev)
+      - name: Arcana 2
+        port: "{{ arcana2_nginx_port }}"
+        description: Arcana 2 live-dev node (admin console)
       - name: vLLM / SGLang inference
         port: "{{ vllm_nginx_port }}"
         description: OpenAI-compatible LLM API (lazy-loaded GPU backend)
@@ -103,24 +101,37 @@
       notify: Reload nginx
       tags: [configure]
 
-    - name: Deploy nginx site config for Arcana
+    - name: Deploy nginx site config for Arcana 2
       ansible.builtin.template:
-        src: ../templates/arcana-nginx.conf.j2
-        dest: /etc/nginx/sites-available/arcana
+        src: ../templates/arcana2-nginx.conf.j2
+        dest: /etc/nginx/sites-available/arcana2
         mode: '0644'
       become: yes
       notify: Reload nginx
-      tags: [configure]
+      tags: [configure, arcana2]
 
-    - name: Enable nginx site for Arcana
+    - name: Enable nginx site for Arcana 2
       ansible.builtin.file:
-        src: /etc/nginx/sites-available/arcana
-        dest: /etc/nginx/sites-enabled/arcana
+        src: /etc/nginx/sites-available/arcana2
+        dest: /etc/nginx/sites-enabled/arcana2
         state: link
       become: yes
       notify: Reload nginx
       when: not ansible_check_mode
-      tags: [configure]
+      tags: [configure, arcana2]
+
+    - name: Remove retired Arcana v1 nginx site
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx/sites-enabled/arcana
+        - /etc/nginx/sites-available/arcana
+        - /etc/nginx/sites-enabled/agentos     # pre-rename v1 site; also claimed :14000
+        - /etc/nginx/sites-available/agentos
+      become: yes
+      notify: Reload nginx
+      tags: [configure, arcana2]
 
     - name: Deploy nginx site config for vLLM
       ansible.builtin.template:
@@ -355,7 +366,7 @@
         proto: tcp
       loop:
         - '2099'
-        - '{{ arcana_port }}'
+        - '{{ arcana2_nginx_port }}'
         - '{{ vllm_nginx_port }}'
         - '{{ homeassistant_nginx_port }}'
         - '{{ homedev_nginx_port }}'

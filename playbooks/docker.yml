@@ -23,8 +23,6 @@
         ports: [5433]  # UI port 7000 is 127.0.0.1-bound; nginx handles external access
       - name: datomic
         ports: [4334]
-      - name: arcana
-        ports: []  # 127.0.0.1-bound; nginx handles external access via port 14000
       - name: homedev
         ports: []  # host networking; nREPL :7888 is localhost-only; nginx fronts web UI on :3001
 
@@ -48,7 +46,7 @@
     # Pinned. Major upgrades: playbooks/cockroachdb-upgrade.yml --tags prepare, bump this, apply, then --tags finalize.
     cockroachdb_version: "v26.2.7"
 
-    # YugabyteDB (Arcana backend)
+    # YugabyteDB (disabled; was Arcana v1 backend)
     yugabytedb_ysql_port: 5433
     yugabytedb_ui_port: 7000
     # Pinned to the 2025.2 stable series; `latest` now points at 2026.1.x.
@@ -73,16 +71,6 @@
     # Datomic Transactor
     datomic_port: 4334
     datomic_version: "1.0.7556"
-
-    # Arcana BEAM cluster
-    arcana_src_path: /home/eslick/homelab/projects/arcana
-    arcana_beam1_port: 14100
-    arcana_beam2_port: 14101
-    arcana_port: 14000
-    arcana_cookie: "arcana_dev"
-    arcana_cluster_nodes: 1  # set to 2 to re-enable beam-2 for cluster testing
-    anthropic_api_key: "{{ vault_anthropic_api_key }}"
-    openai_api_key: "{{ vault_openai_api_key }}"
 
   tasks:
     # --- Shared infrastructure ---
@@ -189,7 +177,7 @@
       become: yes
       tags: [docker]
 
-    # --- YugabyteDB (Arcana backend) ---
+    # --- YugabyteDB (disabled by default; was Arcana v1 backend) ---
 
     # `state: absent` errors when nothing exists to remove, so only reconcile
     # when enabled or when a leftover container is still present.
@@ -251,120 +239,6 @@
         build: always
       become: yes
       tags: [docker, service]
-
-    # --- Arcana BEAM cluster ---
-
-    - name: Ensure arcana compose directory exists
-      ansible.builtin.file:
-        path: "{{ compose_base }}/arcana"
-        state: directory
-        mode: '0755'
-      become: yes
-      tags: [arcana, configure]
-
-    - name: Deploy arcana compose file from template
-      ansible.builtin.template:
-        src: "../templates/arcana-compose.yml.j2"
-        dest: "{{ compose_base }}/arcana/docker-compose.yml"
-        mode: '0644'
-      become: yes
-      tags: [arcana, configure]
-
-    - name: Create agent_os_dev database in YugabyteDB
-      ansible.builtin.command: >
-        docker exec yugabytedb
-        ysqlsh -h yugabytedb -U yugabyte -c "CREATE DATABASE agent_os_dev"
-      register: arcana_yuga_db
-      changed_when: "'CREATE DATABASE' in arcana_yuga_db.stdout"
-      failed_when: >
-        arcana_yuga_db.rc != 0 and
-        'already exists' not in arcana_yuga_db.stderr
-      become: yes
-      tags: [arcana]
-
-    - name: Create Arcana artifacts bucket in MinIO
-      ansible.builtin.command: >
-        docker run --rm --network {{ docker_network }} --entrypoint sh minio/mc -c "
-          mc alias set local http://minio:9000 {{ minio_root_user }} {{ minio_root_password }} &&
-          mc mb --ignore-existing local/artifacts"
-      register: arcana_bucket
-      changed_when: "'Bucket created' in arcana_bucket.stdout"
-      become: yes
-      tags: [arcana]
-
-    - name: Build Arcana dev image
-      ansible.builtin.command:
-        cmd: >
-          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
-          build beam-1
-      become: yes
-      register: arcana_build
-      changed_when: "'writing image' in arcana_build.stdout"
-      tags: [arcana, service]
-
-    - name: Run Arcana migrations and seeds (one-off container, before starting servers)
-      ansible.builtin.command:
-        cmd: >
-          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
-          run --rm beam-1 sh -c "mix ecto.migrate && mix run priv/repo/seeds.exs"
-      become: yes
-      register: arcana_migrate
-      changed_when: "'Migrated' in arcana_migrate.stderr or 'Created' in arcana_migrate.stdout"
-      # CockroachDB DDL auto-commits mid-transaction; Ecto's rollback handler
-      # panics with rc=1 even when all migrations succeeded. Treat rc=1 with
-      # the known MatchError as a warning, not a hard failure.
-      failed_when: >
-        arcana_migrate.rc not in [0, 1] or
-        (arcana_migrate.rc == 1 and
-         'MatchError' not in arcana_migrate.stderr and
-         'TransactionError' not in arcana_migrate.stderr)
-      when: not ansible_check_mode
-      tags: [arcana, service]
-
-    - name: Start beam-1
-      ansible.builtin.command:
-        cmd: >
-          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
-          up -d --no-deps beam-1
-      become: yes
-      register: arcana_beam1_up
-      changed_when: "'Started' in arcana_beam1_up.stdout or 'Created' in arcana_beam1_up.stdout"
-      tags: [arcana, service]
-
-    - name: Wait for beam-1 Phoenix endpoint to respond
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ arcana_beam1_port }}"
-        status_code: [200, 301, 302, 303]
-        timeout: 5
-      register: arcana_beam1_health
-      until: arcana_beam1_health.status in [200, 301, 302, 303]
-      retries: 24
-      delay: 5
-      when: not ansible_check_mode
-      tags: [arcana, service]
-
-    - name: Start beam-2 (reuses compiled deps/build volumes)
-      ansible.builtin.command:
-        cmd: >
-          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
-          up -d --no-deps beam-2
-      become: yes
-      register: arcana_beam2_up
-      changed_when: "'Started' in arcana_beam2_up.stdout or 'Created' in arcana_beam2_up.stdout"
-      when: arcana_cluster_nodes | int >= 2
-      tags: [arcana, service]
-
-    - name: Stop beam-2 when running single-node
-      ansible.builtin.command:
-        cmd: >
-          docker compose -f {{ compose_base }}/arcana/docker-compose.yml
-          stop beam-2
-      become: yes
-      register: arcana_beam2_stop
-      changed_when: "'Stopped' in arcana_beam2_stop.stderr"
-      failed_when: false
-      when: arcana_cluster_nodes | int < 2
-      tags: [arcana, service]
 
     # --- Datomic Transactor ---
 

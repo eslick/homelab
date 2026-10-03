@@ -348,6 +348,43 @@
           }
       tags: [configure, claude]
 
+    - name: Deploy arcana2dev CLI wrapper
+      ansible.builtin.copy:
+        dest: /usr/local/bin/arcana2dev
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Model is set by the directory's .claude/settings.local.json, not pinned here.
+          # Toolchain commands (mix, lean, fstar) run in the container: make dev.check / make dev.shell
+          cd /home/eslick/projects/arcana2
+          exec /home/eslick/.local/bin/claude --dangerously-skip-permissions "$@"
+      become: yes
+      tags: [configure, claude]
+
+    # settings.local.json (not settings.json) so the arcana2 checkout's git
+    # status stays clean; Claude Code treats it as untracked per-user config.
+    - name: Deploy arcana2 Claude directory config
+      ansible.builtin.copy:
+        dest: /home/eslick/projects/arcana2/.claude/settings.local.json
+        owner: eslick
+        group: eslick
+        mode: '0644'
+        content: |
+          {
+            "model": "claude-sonnet-5-5"
+          }
+      tags: [configure, claude]
+
+    - name: Exclude arcana2 local Claude config from git status (local-only, not committed)
+      ansible.builtin.lineinfile:
+        path: /home/eslick/projects/arcana2/.git/info/exclude
+        line: ".claude/settings.local.json"
+        create: yes
+        owner: eslick
+        group: eslick
+        mode: '0644'
+      tags: [configure, claude]
+
     - name: Install lm-sensors for CPU temperature monitoring
       ansible.builtin.apt:
         name: lm-sensors

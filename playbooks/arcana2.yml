@@ -1,0 +1,106 @@
+---
+# Arcana 2 live-dev runtime (replaces Arcana v1; see runbooks and
+# ~/projects/arcana2/docs/handoff/homelab-arcana2.md).
+#
+# Source of truth is the git checkout at arcana2_src_path, bind-mounted into the
+# container for live reload. Only the runtime wiring is managed here.
+#
+# Usage:
+#   ansible-playbook playbooks/arcana2.yml --check --diff
+#   ansible-playbook playbooks/arcana2.yml
+#   ansible-playbook playbooks/arcana2.yml -e arcana2_rebuild=true   # after Dockerfile.dev / mix.exs changes
+
+- name: Manage Arcana 2 runtime
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    docker_network: homelab-net
+    secrets_path: /opt/secrets
+    arcana2_src_path: /home/eslick/projects/arcana2
+    arcana2_port: 4100
+    arcana2_cookie: arcana-dev
+    arcana2_db: arcana_dev
+    # Insecure single-node CockroachDB on the shared docker network (dev, Tailscale-only host)
+    arcana2_database_url: "postgres://root@cockroachdb:26257/{{ arcana2_db }}?sslmode=disable"
+    anthropic_api_key: "{{ vault_anthropic_api_key }}"
+    arcana2_rebuild: false
+
+  tasks:
+    - name: Ensure arcana2 compose directory exists
+      ansible.builtin.file:
+        path: "{{ compose_base }}/arcana2"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [docker, configure]
+
+    # The directory is shared with other services and owned by eslick; leave its
+    # ownership/mode alone and protect only the file we put in it.
+    - name: Ensure secrets directory exists
+      ansible.builtin.file:
+        path: "{{ secrets_path }}"
+        state: directory
+      become: yes
+      tags: [docker, configure, security]
+
+    - name: Deploy arcana2 env file (API key, root-only)
+      ansible.builtin.copy:
+        dest: "{{ secrets_path }}/arcana2.env"
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          ANTHROPIC_API_KEY={{ anthropic_api_key }}
+      no_log: true
+      become: yes
+      tags: [docker, configure, security]
+
+    - name: Deploy arcana2 compose file from template
+      ansible.builtin.template:
+        src: ../templates/arcana2-compose.yml.j2
+        dest: "{{ compose_base }}/arcana2/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [docker, configure]
+
+    - name: Check whether the arcana_dev database exists in CockroachDB
+      ansible.builtin.command: >
+        docker exec cockroachdb cockroach sql --insecure --format=csv
+        -e "SELECT count(*) FROM [SHOW DATABASES] WHERE database_name = '{{ arcana2_db }}'"
+      register: arcana2_db_check
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [docker]
+
+    - name: Create the arcana_dev database in CockroachDB
+      ansible.builtin.command: >
+        docker exec cockroachdb cockroach sql --insecure
+        -e "CREATE DATABASE {{ arcana2_db }}"
+      when: arcana2_db_check.stdout_lines | last | trim == '0'
+      become: yes
+      tags: [docker]
+
+    - name: Build and start Arcana 2
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/arcana2"
+        project_name: arcana-dev
+        state: present
+        build: "{{ 'always' if arcana2_rebuild | bool else 'policy' }}"
+      become: yes
+      when: not ansible_check_mode   # compose dir may not exist yet on a first dry run
+      tags: [docker, service]
+
+    - name: Wait for the Arcana 2 admin console to respond
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ arcana2_port }}/"
+        status_code: [200, 301, 302, 303]
+        timeout: 5
+      register: arcana2_health
+      until: arcana2_health.status in [200, 301, 302, 303]
+      retries: 24
+      delay: 5
+      when: not ansible_check_mode
+      tags: [docker, service]

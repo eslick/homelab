@@ -1,0 +1,127 @@
+---
+# Retire Arcana v1 (superseded by Arcana 2, see playbooks/arcana2.yml).
+#
+# Two phases so the archive can be verified before anything is deleted:
+#   1. ansible-playbook playbooks/retire-arcana-v1.yml --tags archive
+#      -> tarball (working tree incl. uncommitted changes, minus deps/_build) and a
+#         git bundle (full history) on the NAS, plus a sha256 manifest
+#   2. verify the archive, then:
+#      ansible-playbook playbooks/retire-arcana-v1.yml --tags remove
+#      -> deletes the v1 source tree and /opt/compose/arcana (tagged `never`;
+#         refuses to run unless the archive files exist)
+#
+# The Yugabyte data volume (agent_os_dev et al.) is NOT touched here.
+
+- name: Archive and remove Arcana v1
+  hosts: homelab
+  gather_facts: yes
+
+  vars:
+    arcana_v1_src: /home/eslick/homelab/projects/arcana
+    arcana_v1_compose_dir: /opt/compose/arcana
+    archive_dir: /mnt/nas/backups/archives/arcana-v1
+    archive_stamp: "2026-10-03"
+    archive_tarball: "{{ archive_dir }}/arcana-v1-{{ archive_stamp }}.tar.gz"
+    archive_bundle: "{{ archive_dir }}/arcana-v1-{{ archive_stamp }}.bundle"
+    archive_manifest: "{{ archive_dir }}/SHA256SUMS"
+
+  tasks:
+    - name: Ensure archive directory exists on the NAS
+      ansible.builtin.file:
+        path: "{{ archive_dir }}"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [archive]
+
+    - name: Check whether the tarball already exists
+      ansible.builtin.stat:
+        path: "{{ archive_tarball }}"
+      register: tarball_stat
+      become: yes
+      tags: [archive, remove]
+
+    - name: Check whether the git bundle already exists
+      ansible.builtin.stat:
+        path: "{{ archive_bundle }}"
+      register: bundle_stat
+      become: yes
+      tags: [archive, remove]
+
+    - name: Archive v1 working tree (excluding rebuildable deps/_build)
+      community.general.archive:
+        path: "{{ arcana_v1_src }}"
+        dest: "{{ archive_tarball }}"
+        format: gz
+        exclude_path:
+          - "{{ arcana_v1_src }}/deps"
+          - "{{ arcana_v1_src }}/_build"
+          - "{{ arcana_v1_src }}/node_modules"
+          - "{{ arcana_v1_src }}/assets/node_modules"
+      when: not tarball_stat.stat.exists
+      become: yes
+      tags: [archive]
+
+    - name: Bundle v1 git history (all refs)
+      ansible.builtin.command:
+        cmd: git bundle create {{ archive_bundle }} --all
+        chdir: "{{ arcana_v1_src }}"
+        creates: "{{ archive_bundle }}"
+      become: yes
+      tags: [archive]
+
+    - name: Record checksums
+      ansible.builtin.shell:
+        cmd: sha256sum {{ archive_tarball | basename }} {{ archive_bundle | basename }} > SHA256SUMS
+        chdir: "{{ archive_dir }}"
+        creates: "{{ archive_manifest }}"
+      become: yes
+      when: not ansible_check_mode
+      tags: [archive]
+
+    - name: Verify tarball is readable and non-trivial
+      ansible.builtin.shell: >
+        set -o pipefail && tar -tzf {{ archive_tarball }} | wc -l
+      args:
+        executable: /bin/bash
+      register: tarball_entries
+      changed_when: false
+      failed_when: tarball_entries.stdout | int < 100
+      become: yes
+      when: not ansible_check_mode
+      tags: [archive]
+
+    - name: Verify git bundle
+      ansible.builtin.command: git bundle verify {{ archive_bundle }}
+      args:
+        chdir: "{{ arcana_v1_src }}"
+      register: bundle_verify
+      changed_when: false
+      become: yes
+      when: not ansible_check_mode
+      tags: [archive]
+
+    # ---------------- removal (never runs unless asked) ----------------
+
+    - name: Refuse to remove anything unless the archive is in place
+      ansible.builtin.assert:
+        that:
+          - tarball_stat.stat.exists
+          - bundle_stat.stat.exists
+          - tarball_stat.stat.size > 1000000
+        fail_msg: "Archive missing or too small; run with --tags archive first."
+      tags: [remove, never]
+
+    - name: Remove the v1 source tree
+      ansible.builtin.file:
+        path: "{{ arcana_v1_src }}"
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the v1 compose directory
+      ansible.builtin.file:
+        path: "{{ arcana_v1_compose_dir }}"
+        state: absent
+      become: yes
+      tags: [remove, never]
