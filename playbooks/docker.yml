@@ -45,10 +45,14 @@
     # CockroachDB (Datomic backend)
     cockroachdb_sql_port: 26257
     cockroachdb_ui_port: 8090
+    # Pinned: a major upgrade (26.1 -> 26.2) needs a rolling upgrade + finalization.
+    cockroachdb_version: "v26.1.1"
 
     # YugabyteDB (Arcana backend)
     yugabytedb_ysql_port: 5433
     yugabytedb_ui_port: 7000
+    # Pinned to the 2025.2 stable series; `latest` now points at 2026.1.x.
+    yugabytedb_version: "2025.2.6.0-b111"
     # Pinned container hostname -- yugabyted's persisted catalog already
     # references this value from its original bootstrap; do not change it
     # (see the comment in templates/yugabytedb-compose.yml.j2).
