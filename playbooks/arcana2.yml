@@ -28,6 +28,31 @@
     anthropic_api_key: "{{ vault_anthropic_api_key }}"
     arcana2_rebuild: false
 
+    # Provider secrets written to {{ secrets_path }}/arcana2.env as ENV_NAME=value (blank values are skipped).
+    # Sources are vault variables in group_vars/all.yml; `default('')` makes a key optional, so adding a
+    # missing one later is a one-line vault change plus `--tags secrets`. See docs/arcana-overview-contract.md
+    # neighbours and runbooks/2026-10-04-arcana-provider-secrets.md.
+    arcana2_provider_secrets:
+      ANTHROPIC_API_KEY: "{{ anthropic_api_key }}"          # required
+      OPENAI_API_KEY: "{{ vault_openai_api_key | default('') }}"
+      TOGETHER_API_KEY: "{{ together_ai_api_key | default('') }}"
+      HF_TOKEN: "{{ hugging_face_token | default('') }}"
+      PERPLEXITY_API_KEY: "{{ vault_perplexity_api_key | default('') }}"
+      GOOGLE_CLIENT_ID: "{{ vault_google_client_id | default('') }}"   # not secret; kept with its pair
+      GOOGLE_CLIENT_SECRET: "{{ vault_google_client_secret | default('') }}"
+      DISCORD_BOT_TOKEN: "{{ vault_discord_bot_token | default('') }}"
+      TELEGRAM_BOT_TOKEN: "{{ vault_telegram_bot_token | default('') }}"
+      FLUXON_LICENSE_KEY: "{{ vault_fluxon_license_key | default('') }}"
+      VOYAGE_API_KEY: "{{ vault_voyage_api_key | default('') }}"       # not yet created
+      GEMINI_API_KEY: "{{ vault_gemini_api_key | default('') }}"       # not yet created
+      BRAVE_API_KEY: "{{ vault_brave_api_key | default('') }}"         # not yet created
+      GOOGLE_API_KEY: "{{ vault_google_api_key | default('') }}"       # not yet created
+
+    # The arcana2 repo's compose (docker/compose.dev.yml, run by `make dev.up` as this user) reads the
+    # file client-side, so it must be readable by the operator. The operator already has docker access
+    # (root-equivalent), so this does not widen exposure; mode stays 0600.
+    arcana2_env_owner: eslick
+
   tasks:
     - name: Ensure arcana2 compose directory exists
       ansible.builtin.file:
@@ -44,19 +69,18 @@
         path: "{{ secrets_path }}"
         state: directory
       become: yes
-      tags: [docker, configure, security]
+      tags: [docker, configure, security, secrets]
 
-    - name: Deploy arcana2 env file (API key, root-only)
+    - name: Deploy arcana2 provider secrets env file (0600, blanks skipped)
       ansible.builtin.copy:
         dest: "{{ secrets_path }}/arcana2.env"
-        owner: root
-        group: root
+        owner: "{{ arcana2_env_owner }}"
+        group: "{{ arcana2_env_owner }}"
         mode: '0600'
-        content: |
-          ANTHROPIC_API_KEY={{ anthropic_api_key }}
+        content: "{% for i in arcana2_provider_secrets | dict2items if (i.value | string | trim) != '' %}{{ i.key }}={{ i.value }}\n{% endfor %}"
       no_log: true
       become: yes
-      tags: [docker, configure, security]
+      tags: [docker, configure, security, secrets]
 
     - name: Deploy arcana2 compose file from template
       ansible.builtin.template:
