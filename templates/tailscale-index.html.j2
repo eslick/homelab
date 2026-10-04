@@ -59,6 +59,8 @@
     font-size: 1rem;
   }
   a.name:hover { color: var(--accent); }
+  a.detail { font-size: 0.8rem; margin-left: 0.6rem; color: var(--accent); text-decoration: none; }
+  a.detail:hover { text-decoration: underline; }
   .desc {
     color: var(--muted);
     font-size: 0.85rem;
@@ -90,6 +92,9 @@
     <li>
       <span class="port">:{{ svc.port }}</span>
       <a class="name" href="https://{{ tailscale_hostname }}:{{ svc.port }}">{{ svc.name }}</a>
+{% if svc.detail_url is defined %}
+      <a class="detail" href="{{ svc.detail_url }}">details →</a>
+{% endif %}
       <div class="desc">{{ svc.description }}</div>
     </li>
 {% endfor %}

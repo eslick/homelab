@@ -1,0 +1,112 @@
+  :root {
+    color-scheme: light dark;
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212a; --border: #2a303c;
+    --text: #e6e8ec; --muted: #9aa4b2; --accent: #6ea8fe;
+    --c-net: #6ea8fe; --c-app: #5fd0a0; --c-gpu: #b794f6; --c-data: #f0b45a;
+    --c-sys: #8fa3b8; --c-ts: #4fd1d9; --c-ext: #9aa4b2;
+    --ok: #5fd0a0; --warn: #f0b45a; --err: #f07178;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f5f8; --panel: #ffffff; --panel2: #f0f2f6; --border: #d6dbe3;
+      --text: #1b1f27; --muted: #566073; --accent: #1a5fd0;
+      --c-net: #1a5fd0; --c-app: #12805a; --c-gpu: #6d3fc0; --c-data: #a35f08;
+      --c-sys: #4b5d73; --c-ts: #0a7f8a; --c-ext: #566073;
+      --ok: #12805a; --warn: #a35f08; --err: #c4343f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 4rem; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.45;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
+
+  /* ---- top bar + nav ---- */
+  .top { background: var(--panel); border-bottom: 1px solid var(--border); }
+  .top-in { max-width: 1280px; margin: 0 auto; padding: 1rem 1.25rem 0.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
+  .top h1 { font-size: 1.3rem; margin: 0; font-weight: 650; }
+  .top .sub { color: var(--muted); font-size: 0.85rem; }
+  .top .spacer { flex: 1; }
+  nav.tabs { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--border); }
+  nav.tabs div { max-width: 1280px; margin: 0 auto; padding: 0 1.25rem; display: flex; gap: 0.25rem; overflow-x: auto; }
+  nav.tabs a { color: var(--muted); padding: 0.6rem 0.8rem; font-size: 0.88rem; white-space: nowrap; border-bottom: 2px solid transparent; }
+  nav.tabs a:hover { color: var(--text); text-decoration: none; border-bottom-color: var(--accent); }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+  section { margin-bottom: 2.5rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 0.9rem; font-weight: 650; letter-spacing: 0.01em; }
+  h2 small { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 0.5rem; }
+  h3 { font-size: 0.95rem; margin: 0 0 0.6rem; }
+  p { margin: 0 0 0.7rem; }
+  .muted { color: var(--muted); }
+
+  /* ---- cards / widgets ---- */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+  .grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .grid2 { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .widget { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--c-sys); border-radius: 10px; padding: 0.85rem 1rem; }
+  .widget.k-app { border-left-color: var(--c-app); } .widget.k-data { border-left-color: var(--c-data); }
+  .widget.k-gpu { border-left-color: var(--c-gpu); } .widget.k-net { border-left-color: var(--c-net); }
+  .widget.k-ts { border-left-color: var(--c-ts); }
+  .w-label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; }
+  .w-value { font-size: 1.3rem; font-weight: 650; margin: 0.15rem 0; }
+  .w-value small { font-size: 0.78rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .w-sub { color: var(--muted); font-size: 0.8rem; }
+  .group-label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 1.1rem 0 0.5rem; }
+  .pill { display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 99px; vertical-align: middle; border: 1px solid var(--border); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: var(--ok); } .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.err { color: var(--err); border-color: var(--err); } .pill.info { color: var(--accent); border-color: var(--accent); }
+  .tag { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; color: var(--muted); background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 0.02rem 0.4rem; margin-left: 0.3rem; }
+
+  /* ---- diagrams ---- */
+  .diagram { overflow-x: auto; }
+  .diagram svg { display: block; width: 100%; min-width: 880px; height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; }
+  .legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; border: 1.5px solid; margin-right: 0.35rem; vertical-align: -0.1rem; }
+  svg .node { fill: var(--panel2); stroke: var(--border); stroke-width: 1.3; }
+  svg .k-net { stroke: var(--c-net); fill: color-mix(in srgb, var(--c-net) 11%, var(--panel)); }
+  svg .k-app { stroke: var(--c-app); fill: color-mix(in srgb, var(--c-app) 11%, var(--panel)); }
+  svg .k-data { stroke: var(--c-data); fill: color-mix(in srgb, var(--c-data) 11%, var(--panel)); }
+  svg .k-gpu { stroke: var(--c-gpu); fill: color-mix(in srgb, var(--c-gpu) 11%, var(--panel)); }
+  svg .k-sys { stroke: var(--c-sys); fill: color-mix(in srgb, var(--c-sys) 11%, var(--panel)); }
+  svg .k-ts { stroke: var(--c-ts); fill: color-mix(in srgb, var(--c-ts) 11%, var(--panel)); }
+  svg .k-ext { stroke: var(--c-ext); fill: color-mix(in srgb, var(--c-ext) 8%, var(--panel)); stroke-dasharray: 4 3; }
+  svg .zone { fill: none; stroke: var(--border); stroke-width: 1.3; stroke-dasharray: 6 5; }
+  svg .zone-host { fill: color-mix(in srgb, var(--panel2) 45%, transparent); stroke: var(--muted); stroke-dasharray: none; stroke-width: 1.2; }
+  svg .zone-ts { stroke: var(--c-ts); }
+  svg .edge { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+  svg .edge-ts { fill: none; stroke: var(--c-ts); stroke-width: 1.6; stroke-dasharray: 5 4; }
+  svg .bus { fill: none; stroke: var(--c-net); stroke-width: 3; }
+  svg .ah { fill: var(--muted); } svg .ah-ts { fill: var(--c-ts); }
+  svg .chip { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+  svg .t { fill: var(--text); font: 600 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  svg .s { fill: var(--muted); font: 11px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  svg .m { fill: var(--muted); font: 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  svg .ct { fill: var(--text); font: 600 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  svg .z { fill: var(--muted); font: 600 10.5px -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+  svg .tc { text-anchor: middle; } svg .te { text-anchor: end; }
+
+  /* ---- tables / lists ---- */
+  .tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .tbl th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+  .tbl td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .scroll { overflow-x: auto; }
+  dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; font-size: 0.85rem; }
+  dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; }
+  ol.steps { margin: 0; padding-left: 1.2rem; font-size: 0.88rem; } ol.steps li { margin-bottom: 0.35rem; }
+  ul.tree, ul.tree ul { list-style: none; margin: 0; padding-left: 1.2rem; border-left: 1px solid var(--border); }
+  ul.tree { padding-left: 0; border-left: 0; font-size: 0.88rem; }
+  ul.tree li { margin: 0.2rem 0; }
+  ul.tree summary { cursor: pointer; }
+  .ph { border: 1px dashed var(--border); border-radius: 10px; padding: 1rem 1.1rem; color: var(--muted); font-size: 0.85rem; }
+  footer { color: var(--muted); font-size: 0.75rem; margin-top: 2rem; }
+  svg .cl { fill: var(--text); font: 500 11px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  svg .dash { stroke-dasharray: 5 4; }
+  .crumb { font-size: 0.85rem; }
+  .callout { border-left: 3px solid var(--accent); background: var(--panel2); border-radius: 6px; padding: 0.6rem 0.9rem; font-size: 0.85rem; margin: 0.8rem 0 0; }

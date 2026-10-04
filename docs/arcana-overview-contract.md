@@ -4,18 +4,29 @@ Audience: the Claude session working in `~/projects/arcana2`.
 Owner of the page: the homelab session (`~/homelab`, Ansible-only change policy).
 
 The homelab publishes a dashboard at `https://speedracer.terrier-haddock.ts.net/overview.html`
-(linked from the services index). It already shows the **runtime wiring** of Arcana 2
-(containers, ports, database, nginx vhost). It does **not** know what is *inside* Arcana.
-You supply that: up to three small HTML fragment files that the homelab splices into the page
-at deploy time. This document is the contract.
+that stays at homelab level and delegates subsystems to their own pages. Arcana's page is
+`https://speedracer.terrier-haddock.ts.net/arcana.html` (linked from the services index and the dashboard).
+
+What the homelab already shows there (do not duplicate it):
+- **Runtime wiring:** containers, ports, database, nginx vhost, dev-workflow diagram (Claude Code + MCP).
+- **Static architecture views** derived from `DESIGN.md` and each subsystem's `dependencies/0`:
+  the L0–L8 layered diagram, the subsystem connection block diagram with a dependency table,
+  and the intent → proof → kernel pipeline. They are a snapshot (the page footer names the commit).
+
+What it does **not** know is the live state and finer structure *inside* Arcana. You supply that:
+up to three small HTML fragment files that the homelab splices into `/arcana.html` at deploy time.
+This document is the contract.
+
+If you change `DESIGN.md`, the layer map, or any `dependencies/0` so the page's static diagrams are
+out of date, say so in your report to the user; the homelab session regenerates those diagrams.
 
 ## 1. Where the files live (you own them, they live in the arcana2 repo)
 
 ```
 ~/projects/arcana2/docs/homelab/
-  overview-summary.html     # KPI tiles shown in the dashboard's Summary grid (optional)
-  overview-hierarchy.html   # <li> items nested under the "Arcana 2" node of the System hierarchy tree (optional)
-  overview-details.html     # free-form cards (text, tables, SVG diagrams) in the "Arcana 2" section (optional)
+  overview-summary.html     # KPI tiles in the Summary grid of /arcana.html (optional)
+  overview-hierarchy.html   # <li> items in the "Subsystem hierarchy" tree of /arcana.html (optional)
+  overview-details.html     # free-form cards (text, tables, SVG diagrams) at the end of /arcana.html (optional)
 ```
 
 Each file is optional. A missing or empty file just leaves its slot showing a placeholder.
@@ -52,8 +63,9 @@ Markup:
 </div>
 ```
 
-**overview-hierarchy.html** — the Arcana subsystem tree, as `<li>` elements only (the homelab supplies
-the surrounding `<ul>`). Nest with `<ul>` / `<details>`. Show the real module/subsystem structure
+**overview-hierarchy.html** — the finer Arcana module/subsystem tree, as `<li>` elements only (the homelab
+supplies the surrounding `<ul class="tree">`). The layer map and boot dependency graph are already
+drawn by the homelab, so go deeper: the modules inside each subsystem and how they relate. Nest with `<ul>` / `<details>`. Show the real module/subsystem structure
 (Repo, Journal, Queue, Lease, Index, kernel WASM, LLM adapter, admin console, formal proofs, ...),
 taken from `DESIGN.md`, `docs/concepts/` and `lib/arcana/`. Markup:
 
@@ -84,8 +96,8 @@ taken from `DESIGN.md`, `docs/concepts/` and `lib/arcana/`. Markup:
 3. SVG: give it a `viewBox` and **no fixed width/height** (the page scales it); wrap it in `<div class="diagram">`;
    prefix every `id` (markers, gradients) with `arcana-` to avoid clashing with the page's own SVGs.
 4. Keep each file under ~100 KB. Plain, accurate, current. Do not describe things the repo does not do.
-5. Do not restate homelab wiring (host, nginx, ports, Docker, DB container). Link to the facts the page
-   already shows. Describe Arcana's own structure and state.
+5. Do not restate homelab wiring (host, nginx, ports, Docker, DB container) or the static layer and
+   dependency diagrams the page already has. Describe Arcana's own finer structure and live state.
 6. Never include secrets, API keys, tokens, or full connection URLs with credentials.
 
 ## 5. Styling vocabulary available to fragments

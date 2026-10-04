@@ -1,0 +1,457 @@
+{#- Optional Arcana-supplied fragments (contract: docs/arcana-overview-contract.md). Missing file => empty string. -#}
+{%- set arcana_summary = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-summary.html', errors='ignore') | default('', true) -%}
+{%- set arcana_hierarchy = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-hierarchy.html', errors='ignore') | default('', true) -%}
+{%- set arcana_details = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-details.html', errors='ignore') | default('', true) -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcana 2 — speedracer</title>
+<style>
+{% include 'partials/overview-style.css' %}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="top-in">
+  <div>
+    <h1>Arcana 2 <span class="muted" style="font-weight:400">· architecture and runtime</span></h1>
+    <div class="sub">Proof-driven operating system for AI agents on BEAM/OTP · repo snapshot {{ overview_arcana_ref }}</div>
+  </div>
+  <div class="spacer"></div>
+  <span class="pill info">live-dev cluster</span>
+  <a class="crumb" href="/overview.html">← Homelab overview</a>
+  <a class="crumb" href="/">Services index</a>
+</div></header>
+
+<nav class="tabs"><div>
+  <a href="#summary">Summary</a>
+  <a href="#layers">Layers</a>
+  <a href="#connections">Subsystem connections</a>
+  <a href="#pipeline">Intent → proof pipeline</a>
+  <a href="#development">Development</a>
+  <a href="#runtime">Runtime</a>
+  <a href="#contributed">From the Arcana repo</a>
+</div></nav>
+
+<main>
+
+<!-- ===================== SUMMARY ===================== -->
+<section id="summary">
+  <h2>Summary <small>what Arcana is and how it runs here</small></h2>
+  <div class="card">
+    <p>Arcana turns human intent into <em>verified</em> runtime behaviour. A change is elicited into a formal contract, proven against a monitored substrate, and promoted only when its proof obligations are discharged. Every guarantee has one shape:</p>
+    <p class="callout" style="margin-top:0"><strong>if</strong> module ⊨ contract C <strong>and</strong> substrate ⊨ contract-set S, <strong>then</strong> the domain goal G holds. The substrate (BEAM/OTP plus layers L0–L1) is <em>assumed and monitored</em>; the business logic built on it is <em>proven</em>.</p>
+    <p class="muted" style="margin:0.7rem 0 0;font-size:0.82rem">Source: <span class="mono">PURPOSE.md</span>, <span class="mono">DESIGN.md</span> and <span class="mono">docs/proof-driven/</span> in the arcana2 repo. This is a ground-up rewrite of Arcana v1 (retired).</p>
+  </div>
+  <div class="grid">
+    <div class="widget k-app">
+      <div class="w-label">Runtime</div>
+      <div class="w-value">2 <small>clustered dev nodes</small></div>
+      <div class="w-sub"><span class="mono">arcana@arcana-dev</span> (primary) · <span class="mono">arcana@arcana-dev-2</span> (follower)</div>
+    </div>
+    <div class="widget k-net">
+      <div class="w-label">Admin console</div>
+      <div class="w-value"><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></div>
+      <div class="w-sub">nginx TLS → 127.0.0.1:{{ arcana2_port }} · chat, registry, journal, requirements</div>
+    </div>
+    <div class="widget k-data">
+      <div class="w-label">Database</div>
+      <div class="w-value"><span class="mono">arcana_dev</span></div>
+      <div class="w-sub">YugabyteDB YSQL on homelab-net; one <span class="mono">arcana_test_*</span> database per worktree</div>
+    </div>
+    <div class="widget k-gpu">
+      <div class="w-label">Proof toolchain</div>
+      <div class="w-value">Lean · F* · Z3</div>
+      <div class="w-sub">warm daemons in the dev image; WASM kernels run on wasmtime</div>
+    </div>
+    <div class="widget k-sys">
+      <div class="w-label">Code size <span class="muted">(snapshot)</span></div>
+      <div class="w-value">25 <small>boot subsystems incl. Web</small></div>
+      <div class="w-sub">~230 Elixir source files under <span class="mono">lib/arcana</span>: core 68, state 37, web 32, spec 16</div>
+    </div>
+{% if arcana_summary | length > 0 %}
+{{ arcana_summary }}
+{% endif %}
+  </div>
+{% if arcana_summary | length == 0 %}
+  <p class="muted" style="margin-top:0.7rem;font-size:0.8rem">Live status tiles (migrations, proof state, queue depth …) appear here once <code>overview-summary.html</code> exists in the arcana2 repo — see <a href="#contributed">From the Arcana repo</a>.</p>
+{% endif %}
+</section>
+
+<!-- ===================== LAYERS ===================== -->
+<section id="layers">
+  <h2>Layered architecture <small>L0–L8 from DESIGN.md, with what exists in lib/ today</small></h2>
+  <div class="card">
+  <div class="diagram">
+<svg viewBox="0 0 1200 820" role="img" aria-label="Arcana layered architecture from L0 Core up to L8 Patterns, with the external verification plane and external services">
+  <defs>
+    <marker id="a-lay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+
+  <!-- left labels -->
+  <text class="t" x="30" y="44">L8 · Patterns</text><text class="s" x="30" y="60">planned</text>
+  <text class="t" x="30" y="106">L7 · Plugins</text><text class="s" x="30" y="122">planned</text>
+  <text class="t" x="30" y="168">L6 · UX &amp; Web</text><text class="s" x="30" y="184">shipped (admin console)</text>
+  <text class="t" x="30" y="230">L5 · Libs</text><text class="s" x="30" y="246">LLM, MCP shipped</text>
+  <text class="t" x="30" y="292">L4 · Agents/Apps</text><text class="s" x="30" y="308">agent loop, elicit shipped</text>
+  <text class="t" x="30" y="354">L3 · IO</text><text class="s" x="30" y="370">via Phoenix endpoint</text>
+  <text class="t" x="30" y="428">L2 · Compute</text><text class="s" x="30" y="444">proof-bearing layer</text><text class="s" x="30" y="460">building out</text>
+  <text class="t" x="30" y="588">L1 · State</text><text class="s" x="30" y="604">shipped</text><text class="m" x="30" y="620" style="fill:var(--c-data)">substrate S: assumed</text><text class="m" x="30" y="633" style="fill:var(--c-data)">and monitored</text>
+  <text class="t" x="30" y="690">L0 · Core</text><text class="s" x="30" y="706">shipped</text><text class="m" x="30" y="722" style="fill:var(--c-data)">substrate S: assumed</text><text class="m" x="30" y="735" style="fill:var(--c-data)">and monitored</text>
+
+  <!-- L8 -->
+  <rect class="node" x="180" y="20" width="720" height="52" rx="8"/>
+  <rect class="node k-ext" x="196" y="31" width="224" height="30" rx="6"/><text class="cl tc" x="308" y="50">Meta-agents</text>
+  <rect class="node k-ext" x="428" y="31" width="224" height="30" rx="6"/><text class="cl tc" x="540" y="50">Agent builder</text>
+  <rect class="node k-ext" x="660" y="31" width="224" height="30" rx="6"/><text class="cl tc" x="772" y="50">Agent UI patterns</text>
+  <!-- L7 -->
+  <rect class="node" x="180" y="82" width="720" height="52" rx="8"/>
+  <rect class="node k-ext" x="196" y="93" width="166" height="30" rx="6"/><text class="cl tc" x="279" y="112">Plugin model</text>
+  <rect class="node k-ext" x="370" y="93" width="166" height="30" rx="6"/><text class="cl tc" x="453" y="112">Discord</text>
+  <rect class="node k-ext" x="544" y="93" width="166" height="30" rx="6"/><text class="cl tc" x="627" y="112">Perplexity MCP</text>
+  <rect class="node k-ext" x="718" y="93" width="166" height="30" rx="6"/><text class="cl tc" x="801" y="112">Google MCP</text>
+  <!-- L6 -->
+  <rect class="node" x="180" y="144" width="720" height="52" rx="8"/>
+  <rect class="node k-app" x="196" y="155" width="166" height="30" rx="6"/><text class="cl tc" x="279" y="174">Admin console</text>
+  <rect class="node k-app" x="370" y="155" width="166" height="30" rx="6"/><text class="cl tc" x="453" y="174">Dev MCP /mcp/arcana</text>
+  <rect class="node k-app" x="544" y="155" width="166" height="30" rx="6"/><text class="cl tc" x="627" y="174">Assembly gateway</text>
+  <rect class="node k-ext" x="718" y="155" width="166" height="30" rx="6"/><text class="cl tc" x="801" y="174">CNL read-back UI</text>
+  <!-- L5 -->
+  <rect class="node" x="180" y="206" width="720" height="52" rx="8"/>
+  <rect class="node k-app" x="196" y="217" width="224" height="30" rx="6"/><text class="cl tc" x="308" y="236">Lib.LLM · Anthropic client</text>
+  <rect class="node k-app" x="428" y="217" width="224" height="30" rx="6"/><text class="cl tc" x="540" y="236">Lib.MCP · client, OAuth, Gmail</text>
+  <rect class="node k-ext" x="660" y="217" width="224" height="30" rx="6"/><text class="cl tc" x="772" y="236">Fact memory</text>
+  <!-- L4 -->
+  <rect class="node" x="180" y="268" width="720" height="52" rx="8"/>
+  <rect class="node k-app" x="196" y="279" width="166" height="30" rx="6"/><text class="cl tc" x="279" y="298">Agent loop (plan/run)</text>
+  <rect class="node k-app" x="370" y="279" width="166" height="30" rx="6"/><text class="cl tc" x="453" y="298">Elicit · ReqNode graph</text>
+  <rect class="node k-ext" x="544" y="279" width="166" height="30" rx="6"/><text class="cl tc" x="627" y="298">Process.App · Evals</text>
+  <rect class="node k-ext" x="718" y="279" width="166" height="30" rx="6"/><text class="cl tc" x="801" y="298">Workspace · capabilities</text>
+  <!-- L3 -->
+  <rect class="node" x="180" y="330" width="720" height="52" rx="8"/>
+  <rect class="node k-app" x="196" y="341" width="224" height="30" rx="6"/><text class="cl tc" x="308" y="360">Phoenix endpoint + router</text>
+  <rect class="node k-ext" x="428" y="341" width="224" height="30" rx="6"/><text class="cl tc" x="540" y="360">Streaming pipelines</text>
+  <rect class="node k-ext" x="660" y="341" width="224" height="30" rx="6"/><text class="cl tc" x="772" y="360">Contract-enforced externs</text>
+  <!-- L2 -->
+  <rect class="node" x="180" y="392" width="720" height="150" rx="8"/>
+  <rect class="node k-gpu" x="196" y="406" width="224" height="34" rx="6"/><text class="cl tc" x="308" y="427">Verify · provers · ProofCache</text>
+  <rect class="node k-gpu" x="428" y="406" width="224" height="34" rx="6"/><text class="cl tc" x="540" y="427">Spec · IR / ontology bridge</text>
+  <rect class="node k-gpu" x="660" y="406" width="224" height="34" rx="6"/><text class="cl tc" x="772" y="427">Kernel.Wasm · wasmtime pool</text>
+  <rect class="node k-gpu" x="196" y="448" width="224" height="34" rx="6"/><text class="cl tc" x="308" y="469">Kernel.Executor · effect plans</text>
+  <rect class="node k-gpu" x="428" y="448" width="224" height="34" rx="6"/><text class="cl tc" x="540" y="469">Conformance · monitors</text>
+  <rect class="node k-gpu" x="660" y="448" width="224" height="34" rx="6"/><text class="cl tc" x="772" y="469">Code Registry · gated rollout</text>
+  <rect class="node k-gpu" x="196" y="490" width="224" height="34" rx="6"/><text class="cl tc" x="308" y="511">Process · sandboxed actor</text>
+  <rect class="node k-gpu" x="428" y="490" width="224" height="34" rx="6"/><text class="cl tc" x="540" y="511">Assembly · component DAG</text>
+  <rect class="node k-gpu" x="660" y="490" width="224" height="34" rx="6"/><text class="cl tc" x="772" y="511">Compose · routine planning</text>
+  <!-- L1 -->
+  <rect class="node" x="180" y="552" width="720" height="92" rx="8"/>
+  <rect class="node k-data" x="196" y="564" width="130" height="30" rx="6"/><text class="cl tc" x="261" y="583">Journal (oracle)</text>
+  <rect class="node k-data" x="334" y="564" width="130" height="30" rx="6"/><text class="cl tc" x="399" y="583">Model</text>
+  <rect class="node k-data" x="472" y="564" width="130" height="30" rx="6"/><text class="cl tc" x="537" y="583">Queue</text>
+  <rect class="node k-data" x="610" y="564" width="130" height="30" rx="6"/><text class="cl tc" x="675" y="583">Workflow</text>
+  <rect class="node k-data" x="748" y="564" width="130" height="30" rx="6"/><text class="cl tc" x="813" y="583">Scheduler</text>
+  <rect class="node k-data" x="196" y="602" width="130" height="30" rx="6"/><text class="cl tc" x="261" y="621">Lease</text>
+  <rect class="node k-data" x="334" y="602" width="130" height="30" rx="6"/><text class="cl tc" x="399" y="621">Idempotency</text>
+  <rect class="node k-data" x="472" y="602" width="130" height="30" rx="6"/><text class="cl tc" x="537" y="621">Secrets</text>
+  <rect class="node k-data" x="610" y="602" width="130" height="30" rx="6"/><text class="cl tc" x="675" y="621">Knowledge</text>
+  <rect class="node k-data" x="748" y="602" width="130" height="30" rx="6"/><text class="cl tc" x="813" y="621">Tasks</text>
+  <!-- L0 -->
+  <rect class="node" x="180" y="654" width="720" height="92" rx="8"/>
+  <rect class="node k-data" x="196" y="666" width="108" height="30" rx="6"/><text class="cl tc" x="250" y="685">Repo · Schema</text>
+  <rect class="node k-data" x="312" y="666" width="108" height="30" rx="6"/><text class="cl tc" x="366" y="685">Store</text>
+  <rect class="node k-data" x="428" y="666" width="108" height="30" rx="6"/><text class="cl tc" x="482" y="685">Buffer</text>
+  <rect class="node k-data" x="544" y="666" width="108" height="30" rx="6"/><text class="cl tc" x="598" y="685">Logs</text>
+  <rect class="node k-data" x="660" y="666" width="108" height="30" rx="6"/><text class="cl tc" x="714" y="685">Telemetry</text>
+  <rect class="node k-data" x="776" y="666" width="108" height="30" rx="6"/><text class="cl tc" x="830" y="685">PubSub</text>
+  <rect class="node k-data" x="196" y="704" width="108" height="30" rx="6"/><text class="cl tc" x="250" y="723">Filesystem</text>
+  <rect class="node k-data" x="312" y="704" width="108" height="30" rx="6"/><text class="cl tc" x="366" y="723">Secrets</text>
+  <rect class="node k-data" x="428" y="704" width="108" height="30" rx="6"/><text class="cl tc" x="482" y="723">Retry</text>
+  <rect class="node k-data" x="544" y="704" width="108" height="30" rx="6"/><text class="cl tc" x="598" y="723">Index</text>
+  <rect class="node k-data" x="660" y="704" width="108" height="30" rx="6"/><text class="cl tc" x="714" y="723">Embeddings</text>
+  <rect class="node k-data" x="776" y="704" width="108" height="30" rx="6"/><text class="cl tc" x="830" y="723">Cluster</text>
+  <!-- BEAM -->
+  <rect class="node k-sys" x="180" y="756" width="720" height="40" rx="8"/>
+  <text class="t tc" x="540" y="781">BEAM / OTP · Elixir 1.19 / OTP 28 · supervision tree booted in dependency order</text>
+
+  <!-- right column: externals -->
+  <rect class="node k-ext" x="930" y="144" width="250" height="52" rx="8"/>
+  <text class="t" x="944" y="166">Claude Code (MCP client)</text><text class="s" x="944" y="184">Tidewave + /mcp/arcana</text>
+  <path class="edge" d="M930 170H900" marker-end="url(#a-lay)"/>
+  <rect class="node k-ext" x="930" y="206" width="250" height="52" rx="8"/>
+  <text class="t" x="944" y="228">Anthropic API</text><text class="s" x="944" y="246">LLM calls (untrusted translator)</text>
+  <path class="edge" d="M930 232H900" marker-end="url(#a-lay)"/>
+  <rect class="zone" x="930" y="392" width="250" height="150" rx="8"/>
+  <text class="z" x="944" y="408">Verification plane</text>
+  <rect class="node k-gpu" x="944" y="416" width="222" height="26" rx="6"/><text class="cl tc" x="1055" y="433">Lean 4 + Mathlib</text>
+  <rect class="node k-gpu" x="944" y="448" width="222" height="26" rx="6"/><text class="cl tc" x="1055" y="465">F* / Pulse + KaRaMeL → WASM</text>
+  <rect class="node k-gpu" x="944" y="480" width="222" height="26" rx="6"/><text class="cl tc" x="1055" y="497">Apalache · TLC · Quint</text>
+  <rect class="node k-gpu" x="944" y="512" width="222" height="26" rx="6"/><text class="cl tc" x="1055" y="529">Z3 solver</text>
+  <path class="edge" d="M930 467H900" marker-end="url(#a-lay)"/>
+  <rect class="node k-ext" x="930" y="654" width="250" height="40" rx="8"/>
+  <text class="t" x="944" y="679">YugabyteDB (YSQL)</text>
+  <path class="edge" d="M930 674H900" marker-end="url(#a-lay)"/>
+  <rect class="node k-ext" x="930" y="706" width="250" height="40" rx="8"/>
+  <text class="t" x="944" y="731">S3 / local-FS blob store</text>
+  <path class="edge" d="M930 726H900" marker-end="url(#a-lay)"/>
+</svg>
+  </div>
+  <div class="legend">
+    <span><i style="border-color:var(--c-data)"></i>substrate S (L0–L1), assumed and monitored</span>
+    <span><i style="border-color:var(--c-gpu)"></i>proof-bearing layer and prover plane</span>
+    <span><i style="border-color:var(--c-app)"></i>shipped application layers</span>
+    <span><i style="border-color:var(--c-ext);border-style:dashed"></i>planned or external</span>
+  </div>
+  <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Layers organise docs and sequencing, not strict barriers. Chip status comes from what exists under <span class="mono">lib/arcana</span> at the snapshot above; DESIGN.md is the canonical map. Dashed chips either have no code yet or are external.</p>
+  </div>
+</section>
+
+<!-- ===================== CONNECTIONS ===================== -->
+<section id="connections">
+  <h2>Subsystem connections <small>the boot-time dependency graph</small></h2>
+  <div class="card">
+  <div class="diagram">
+<svg viewBox="0 0 1240 790" role="img" aria-label="Block diagram of Arcana subsystems and their declared dependencies, grouped into L2 compute, L1 state and L0 core">
+  <defs>
+    <marker id="a-con" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+
+  <!-- top row -->
+  <rect class="node k-app" x="40" y="30" width="190" height="70" rx="8"/>
+  <text class="t" x="54" y="52">Arcana.Process</text><text class="s" x="54" y="70">typed sandboxed actor host</text><text class="m" x="54" y="88">deps: Journal · Wasm</text>
+  <rect class="node k-net" x="260" y="30" width="260" height="70" rx="8"/>
+  <text class="t" x="274" y="52">Arcana.Web</text><text class="s" x="274" y="70">console · LiveView · DevMCP</text><text class="m" x="274" y="88">dep: PubSub · calls facades</text>
+  <rect class="node k-sys" x="550" y="30" width="240" height="70" rx="8"/>
+  <text class="t" x="564" y="52">Arcana.Conformance</text><text class="s" x="564" y="70">substrate-assumption monitors</text><text class="m" x="564" y="88">deps: Telemetry · PubSub</text>
+  <rect class="node k-ext" x="820" y="30" width="380" height="70" rx="8"/>
+  <text class="t" x="834" y="52">Pure libraries (no boot process)</text><text class="s" x="834" y="70">Spec · Elicit · Assembly · Agent · Lib.LLM</text><text class="s" x="834" y="88">Lib.MCP · Schema · Embeddings · Retry</text>
+
+  <!-- L2 -->
+  <rect class="zone" x="40" y="170" width="1140" height="130" rx="10"/>
+  <text class="z te" x="1166" y="188">L2 · Compute (proof-bearing)</text>
+  <rect class="node k-gpu" x="60" y="210" width="150" height="50" rx="6"/><text class="t" x="72" y="230">Kernel.Wasm</text><text class="s" x="72" y="248">wasmtime worker pool</text>
+  <rect class="node k-gpu" x="230" y="210" width="150" height="50" rx="6"/><text class="t" x="242" y="230">Verify</text><text class="s" x="242" y="248">Lean · F* · Z3 daemons</text>
+  <rect class="node k-gpu" x="400" y="210" width="150" height="50" rx="6"/><text class="t" x="412" y="230">Kernel.Executor</text><text class="s" x="412" y="248">effect-plan interpreter</text>
+  <rect class="node k-gpu" x="570" y="210" width="150" height="50" rx="6"/><text class="t" x="582" y="230">Compose</text><text class="s" x="582" y="248">goal → routine planning</text>
+  <rect class="node k-gpu" x="740" y="210" width="150" height="50" rx="6"/><text class="t" x="752" y="230">Code.Registry</text><text class="s" x="752" y="248">hash-keyed kernels</text>
+  <path class="edge" d="M570 235H550" marker-end="url(#a-con)"/>
+  <path class="edge" d="M720 235H740" marker-end="url(#a-con)"/>
+
+  <!-- L1 -->
+  <rect class="zone" x="40" y="370" width="1140" height="130" rx="10"/>
+  <text class="z te" x="1166" y="388">L1 · State (substrate S, Repo-backed)</text>
+  <rect class="node k-data" x="60" y="410" width="120" height="46" rx="6"/><text class="t tc" x="120" y="438">Lease</text>
+  <rect class="node k-data" x="198" y="410" width="120" height="46" rx="6"/><text class="t tc" x="258" y="438">Scheduler</text>
+  <rect class="node k-data" x="336" y="410" width="120" height="46" rx="6"/><text class="t tc" x="396" y="438">Tasks</text>
+  <rect class="node k-data" x="474" y="410" width="120" height="46" rx="6"/><text class="t tc" x="534" y="438">Model</text>
+  <rect class="node k-data" x="612" y="410" width="120" height="46" rx="6"/><text class="t tc" x="672" y="438">Journal</text>
+  <rect class="node k-data" x="750" y="410" width="120" height="46" rx="6"/><text class="t tc" x="810" y="438">Workflow</text>
+  <rect class="node k-data" x="888" y="410" width="120" height="46" rx="6"/><text class="t tc" x="948" y="438">Idempotency</text>
+  <rect class="node k-data" x="1026" y="410" width="120" height="46" rx="6"/><text class="t tc" x="1086" y="438">Queue</text>
+  <path class="edge" d="M198 433H180" marker-end="url(#a-con)"/>
+  <path class="edge" d="M336 433H318" marker-end="url(#a-con)"/>
+  <path class="edge" d="M456 433H474" marker-end="url(#a-con)"/>
+  <path class="edge" d="M750 433H732" marker-end="url(#a-con)"/>
+  <path class="edge" d="M870 433H888" marker-end="url(#a-con)"/>
+  <!-- Repo bus -->
+  <path class="edge" d="M120 456V478M258 456V478M534 456V478M672 456V478M810 456V478M948 456V478M1086 456V478" style="stroke-width:1.2"/>
+  <path class="bus" d="M120 478H1086"/>
+  <text class="m" x="60" y="494">every L1 store depends on Core.Repo (Tasks reaches it through Model and Scheduler)</text>
+
+  <!-- L0 -->
+  <rect class="zone" x="40" y="560" width="1140" height="156" rx="10"/>
+  <text class="z te" x="1166" y="578">L0 · Core (substrate S)</text>
+  <rect class="node k-data" x="60" y="592" width="120" height="46" rx="6"/><text class="t tc" x="120" y="620">Buffer</text>
+  <rect class="node k-data" x="198" y="592" width="120" height="46" rx="6"/><text class="t tc" x="258" y="620">Logs</text>
+  <rect class="node k-data" x="336" y="592" width="120" height="46" rx="6"/><text class="t tc" x="396" y="620">Store</text>
+  <rect class="node k-data" x="474" y="592" width="120" height="46" rx="6"/><text class="t tc" x="534" y="620">Filesystem</text>
+  <rect class="node k-data" x="650" y="592" width="120" height="46" rx="6"/><text class="t tc" x="710" y="620">Secrets</text>
+  <rect class="node k-data" x="788" y="592" width="120" height="46" rx="6"/><text class="t tc" x="848" y="620">Repo</text>
+  <rect class="node k-data" x="926" y="592" width="120" height="46" rx="6"/><text class="t tc" x="986" y="620">Index</text>
+  <path class="edge" d="M198 615H180" marker-end="url(#a-con)"/>
+  <path class="edge" d="M318 615H336" marker-end="url(#a-con)"/>
+  <path class="edge" d="M456 615H474" marker-end="url(#a-con)"/>
+  <path class="edge" d="M788 615H770" marker-end="url(#a-con)"/>
+  <path class="edge" d="M926 615H908" marker-end="url(#a-con)"/>
+  <rect class="node k-sys" x="60" y="654" width="1100" height="46" rx="6"/>
+  <text class="t" x="76" y="674">Core.Telemetry + Core.PubSub</text><text class="s" x="76" y="691">every subsystem above depends on both; those edges are omitted for clarity</text>
+
+  <!-- BEAM -->
+  <rect class="node k-sys" x="40" y="730" width="1140" height="40" rx="8"/>
+  <text class="t tc" x="610" y="755">BEAM / OTP · boot order = topological sort of Subsystem.dependencies/0 (cycles and missing deps fail at boot)</text>
+
+  <!-- top row arrows -->
+  <path class="edge" d="M135 100V210" marker-end="url(#a-con)"/><text class="m te" x="127" y="150">Kernel.Wasm</text>
+  <path class="edge" d="M215 100V370" marker-end="url(#a-con)"/><text class="m" x="223" y="345">→ Journal</text>
+  <path class="edge dash" d="M560 100V370" marker-end="url(#a-con)"/><text class="m" x="568" y="352">monitors</text>
+  <path class="edge dash" d="M390 100V170" marker-end="url(#a-con)"/><text class="m" x="398" y="140">calls facades</text>
+  <path class="edge dash" d="M1010 100V170" marker-end="url(#a-con)"/><text class="m" x="1018" y="140">use L2 facades</text>
+
+  <!-- L2 -> L1 -->
+  <path class="edge" d="M460 260L270 410" marker-end="url(#a-con)"/>
+  <path class="edge" d="M490 260L650 410" marker-end="url(#a-con)"/>
+  <path class="edge" d="M770 260L550 410" marker-end="url(#a-con)"/>
+  <path class="edge" d="M790 260L690 410" marker-end="url(#a-con)"/>
+  <!-- L1 -> L0 -->
+  <path class="edge" d="M640 456L420 592" marker-end="url(#a-con)"/>
+  <path class="edge" d="M848 478V592" marker-end="url(#a-con)"/>
+</svg>
+  </div>
+  <div class="legend">
+    <span>solid arrow = “depends on” (declared in <span class="mono">dependencies/0</span>)</span>
+    <span>dashed arrow = runtime relation (calls or monitors), not a boot dependency</span>
+  </div>
+  </div>
+
+  <div class="card scroll">
+    <h3>Declared dependencies <span class="muted" style="font-weight:400">(besides Telemetry and PubSub, which almost everything uses)</span></h3>
+    <table class="tbl">
+      <tr><th>Subsystem</th><th>Layer</th><th>Depends on</th></tr>
+      <tr><td class="mono">Core.Secrets</td><td>L0</td><td>—</td></tr>
+      <tr><td class="mono">Core.Repo</td><td>L0</td><td>Secrets</td></tr>
+      <tr><td class="mono">Core.Store</td><td>L0</td><td>Filesystem</td></tr>
+      <tr><td class="mono">Core.Logs</td><td>L0</td><td>Buffer, Store</td></tr>
+      <tr><td class="mono">Core.Index</td><td>L0</td><td>Repo</td></tr>
+      <tr><td class="mono">State.Model / Queue / Lease / Idempotency</td><td>L1</td><td>Repo</td></tr>
+      <tr><td class="mono">State.Journal</td><td>L1</td><td>Repo, Store</td></tr>
+      <tr><td class="mono">State.Scheduler</td><td>L1</td><td>Repo, Lease</td></tr>
+      <tr><td class="mono">State.Workflow</td><td>L1</td><td>Repo, Journal, Idempotency</td></tr>
+      <tr><td class="mono">State.Tasks</td><td>L1</td><td>Model, Scheduler</td></tr>
+      <tr><td class="mono">Verify, Kernel.Wasm</td><td>L2</td><td>— (leaf subsystems; they wrap external toolchains)</td></tr>
+      <tr><td class="mono">Kernel.Executor</td><td>L2</td><td>Journal, Scheduler</td></tr>
+      <tr><td class="mono">Code.Registry</td><td>L2</td><td>Store, Journal, Model</td></tr>
+      <tr><td class="mono">Compose</td><td>L2</td><td>Index, Kernel.Executor, Code.Registry</td></tr>
+      <tr><td class="mono">Process</td><td>L4 host</td><td>Journal, Kernel.Wasm</td></tr>
+      <tr><td class="mono">Conformance</td><td>—</td><td>— (attaches monitors to the substrate)</td></tr>
+      <tr><td class="mono">Web</td><td>L6</td><td>— (stateless facade calls into the layers below)</td></tr>
+    </table>
+    <p class="muted" style="margin:0.7rem 0 0;font-size:0.8rem">Source: <span class="mono">dependencies/0</span> in each subsystem module and <span class="mono">Arcana.Subsystems.integrated/0</span> at the snapshot above. <span class="mono">State.Knowledge</span> and <span class="mono">State.Secrets</span> exist but are not in the integrated boot list.</p>
+  </div>
+</section>
+
+<!-- ===================== PIPELINE ===================== -->
+<section id="pipeline">
+  <h2>Intent → proof → running kernel <small>how the subsystems are used together</small></h2>
+  <div class="card">
+  <div class="diagram">
+<svg viewBox="0 0 1200 170" role="img" aria-label="Pipeline from intent through elicitation, specification, verification, registry promotion and kernel execution to the journal and conformance monitors">
+  <defs>
+    <marker id="a-pipe" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+  <rect class="node k-ext" x="16" y="40" width="148" height="90" rx="8"/>
+  <text class="t" x="28" y="64">Intent</text><text class="s" x="28" y="84">natural language</text><text class="s" x="28" y="100">human goal</text>
+  <rect class="node k-app" x="186" y="40" width="148" height="90" rx="8"/>
+  <text class="t" x="198" y="64">Arcana.Elicit</text><text class="s" x="198" y="84">ReqNode graph</text><text class="s" x="198" y="100">LLM untrusted</text>
+  <rect class="node k-gpu" x="356" y="40" width="148" height="90" rx="8"/>
+  <text class="t" x="368" y="64">Arcana.Spec</text><text class="s" x="368" y="84">Lean IR + ontology</text><text class="s" x="368" y="100">content-addressed</text>
+  <rect class="node k-gpu" x="526" y="40" width="148" height="90" rx="8"/>
+  <text class="t" x="538" y="64">Arcana.Verify</text><text class="s" x="538" y="84">Lean · F* · Z3 certs</text><text class="s" x="538" y="100">ProofCache</text>
+  <rect class="node k-gpu" x="696" y="40" width="148" height="90" rx="8"/>
+  <text class="t" x="708" y="64">Code.Registry</text><text class="s" x="708" y="84">promote on discharge</text><text class="s" x="708" y="100">pointer-swap rollout</text>
+  <rect class="node k-gpu" x="866" y="40" width="148" height="90" rx="8"/>
+  <text class="t" x="878" y="64">Kernel + Executor</text><text class="s" x="878" y="84">WASM kernel emits plan</text><text class="s" x="878" y="100">executor runs effects</text>
+  <rect class="node k-data" x="1036" y="40" width="148" height="90" rx="8"/>
+  <text class="t" x="1048" y="64">Journal · Monitors</text><text class="s" x="1048" y="84">gap-free replay oracle</text><text class="s" x="1048" y="100">assumptions monitored</text>
+  <path class="edge" d="M164 85H186" marker-end="url(#a-pipe)"/><path class="edge" d="M334 85H356" marker-end="url(#a-pipe)"/>
+  <path class="edge" d="M504 85H526" marker-end="url(#a-pipe)"/><path class="edge" d="M674 85H696" marker-end="url(#a-pipe)"/>
+  <path class="edge" d="M844 85H866" marker-end="url(#a-pipe)"/><path class="edge" d="M1014 85H1036" marker-end="url(#a-pipe)"/>
+  <text class="z" x="186" y="24">LLM translates</text>
+  <text class="z" x="356" y="24">non-LLM gates</text>
+  <text class="z" x="866" y="24">capability-bound effects</text>
+</svg>
+  </div>
+  <p class="muted" style="margin:0.8rem 0 0;font-size:0.82rem">The LLM only translates; every output passes a non-LLM gate before it can be promoted. A change that cannot be proven cannot promote, and the journal makes “verified to contract” checkable by byte-exact replay. In the admin console this is the chat workflow: intent → goal → routine → Lean discharge → proof-carrying plan.</p>
+  </div>
+</section>
+
+<!-- ===================== DEVELOPMENT ===================== -->
+<section id="development">
+  <h2>Development <small>Claude Code and MCP against the live cluster</small></h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Workflow</h3>
+      <p class="muted" style="font-size:0.85rem">Claude Code edits the bind-mounted checkout, the primary recompiles on save, and MCP lets the session inspect and drive the live nodes. The diagram is on the <a href="/overview.html#arcana-dev">homelab overview</a>.</p>
+      <dl class="kv">
+        <dt>Start / stop</dt><dd class="mono">make dev.up · make dev.down</dd>
+        <dt>Cluster view</dt><dd class="mono">make dev.cluster · make dev.logs</dd>
+        <dt>REPL</dt><dd class="mono">make dev.iex (remsh to the primary)</dd>
+        <dt>Checks</dt><dd class="mono">docker exec arcana-dev make check</dd>
+        <dt>Worktrees</dt><dd class="mono">.worktrees/&lt;subsystem&gt;, one DB each</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>MCP tools</h3>
+      <dl class="kv">
+        <dt>Tidewave</dt><dd class="mono">/tidewave/mcp: project_eval, get_docs, get_logs, get_source_location, execute_sql_query</dd>
+        <dt>Read</dt><dd class="mono">arcana_status, registry_list/get, artifact, journal_read, model, logs</dd>
+        <dt>Mutating</dt><dd class="mono">arcana_lifecycle, arcana_kernel_step, arcana_conformance_reset</dd>
+        <dt>Audit</dt><dd>every mutating call lands in journal stream <span class="mono">dev_mcp:audit</span></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RUNTIME ===================== -->
+<section id="runtime">
+  <h2>Runtime wiring <small>owned by the homelab</small></h2>
+  <div class="grid2">
+    <div class="card">
+      <dl class="kv">
+        <dt>Source</dt><dd class="mono">{{ arcana2_src_path }} (bind-mounted at /workspace)</dd>
+        <dt>Containers</dt><dd class="mono">arcana-dev :4100, arcana-dev-2 :4101</dd>
+        <dt>Ports</dt><dd>127.0.0.1 plus the tailnet IP, never all interfaces</dd>
+        <dt>Console</dt><dd><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}</a></dd>
+        <dt>Clustering</dt><dd>libcluster Epmd over <span class="mono">ARCANA_CLUSTER_HOSTS</span>, shared cookie</dd>
+        <dt>Database</dt><dd><span class="mono">arcana_dev</span> on YugabyteDB; only the primary runs migrations</dd>
+        <dt>LLM</dt><dd>Anthropic API (key in a root-only env file)</dd>
+        <dt>Playbook</dt><dd class="mono">playbooks/arcana2.yml</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>Notes</h3>
+      <ul style="margin:0;padding-left:1.1rem;font-size:0.85rem">
+        <li>The nodes are <span class="mono">restart: unless-stopped</span>; the follower waits for the primary's health check.</li>
+        <li>Per-node state (ETS, log ring buffer, memory store) is not shared; durable state is the database plus the local store root.</li>
+        <li>Durable guarantees depend on YugabyteDB. It is the homelab's only SQL database, loopback-only with auth off.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CONTRIBUTED ===================== -->
+<section id="contributed">
+  <h2>From the Arcana repo <small>written by the Arcana session, published by the homelab</small></h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Subsystem hierarchy</h3>
+{% if arcana_hierarchy | length > 0 %}
+      <ul class="tree">
+{{ arcana_hierarchy }}
+      </ul>
+{% else %}
+      <p class="muted" style="margin:0;font-size:0.85rem">Not yet provided (<code>overview-hierarchy.html</code>).</p>
+{% endif %}
+    </div>
+    <div class="card">
+      <h3>How to contribute</h3>
+      <p class="muted" style="font-size:0.85rem">The Arcana session writes up to three HTML fragments in the arcana2 repo and the homelab publishes them here.</p>
+      <dl class="kv">
+        <dt>Files</dt><dd class="mono">{{ arcana_overview_dir }}/</dd>
+        <dt>Slots</dt><dd><span class="mono">overview-summary.html</span> (tiles above) · <span class="mono">overview-hierarchy.html</span> (tree here) · <span class="mono">overview-details.html</span> (cards below)</dd>
+        <dt>Publish</dt><dd class="mono">ansible-playbook playbooks/nginx.yml --tags overview</dd>
+      </dl>
+      <p style="margin:0.7rem 0 0"><a href="/arcana-overview-contract.txt">Instructions for the Arcana process →</a></p>
+    </div>
+  </div>
+{% if arcana_details | length > 0 %}
+{{ arcana_details }}
+{% else %}
+  <div class="ph">No Arcana-provided detail cards yet. Point the arcana2 session at <code>~/homelab/docs/arcana-overview-contract.md</code> (also at <a href="/arcana-overview-contract.txt">/arcana-overview-contract.txt</a>).</div>
+{% endif %}
+</section>
+
+<footer>Generated by playbooks/nginx.yml (<code>--tags overview</code>) from templates/arcana-overview.html.j2 — edit those, not this file. The layer map and dependency graph are a snapshot of the arcana2 repo ({{ overview_arcana_ref }}); re-derive them from <span class="mono">DESIGN.md</span> and <span class="mono">dependencies/0</span> when the architecture changes.</footer>
+</main>
+</body>
+</html>

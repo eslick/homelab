@@ -27,13 +27,15 @@
     arcana2_src_path: /home/eslick/projects/arcana2
     arcana_overview_dir: "{{ arcana2_src_path }}/docs/homelab"
     overview_snapshot_date: "2026-10-04"
+    overview_arcana_ref: "2026-10-04 · branch model-store-query-atoms @ 7c1f6b55"
     tailscale_services:
-      - name: Home Assistant
-        port: "{{ homeassistant_nginx_port }}"
-        description: Home automation
       - name: Arcana 2
         port: "{{ arcana2_nginx_port }}"
         description: Arcana 2 live-dev node (admin console)
+        detail_url: /arcana.html
+      - name: Home Assistant
+        port: "{{ homeassistant_nginx_port }}"
+        description: Home automation
       - name: vLLM / SGLang inference
         port: "{{ vllm_nginx_port }}"
         description: OpenAI-compatible LLM API (lazy-loaded GPU backend)
@@ -226,6 +228,14 @@
       ansible.builtin.template:
         src: ../templates/homelab-overview.html.j2
         dest: "{{ index_web_root }}/overview.html"
+        mode: '0644'
+      become: yes
+      tags: [configure, index, overview]
+
+    - name: Deploy Arcana 2 sub-page
+      ansible.builtin.template:
+        src: ../templates/arcana-overview.html.j2
+        dest: "{{ index_web_root }}/arcana.html"
         mode: '0644'
       become: yes
       tags: [configure, index, overview]

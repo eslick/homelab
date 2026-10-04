@@ -1,7 +1,3 @@
-{#- Optional Arcana-supplied fragments (contract: docs/arcana-overview-contract.md). Missing file => empty string. -#}
-{%- set arcana_summary = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-summary.html', errors='ignore') | default('', true) -%}
-{%- set arcana_hierarchy = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-hierarchy.html', errors='ignore') | default('', true) -%}
-{%- set arcana_details = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-details.html', errors='ignore') | default('', true) -%}
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,114 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>speedracer — homelab overview</title>
 <style>
-  :root {
-    color-scheme: light dark;
-    --bg: #0f1115; --panel: #171a21; --panel2: #1d212a; --border: #2a303c;
-    --text: #e6e8ec; --muted: #9aa4b2; --accent: #6ea8fe;
-    --c-net: #6ea8fe; --c-app: #5fd0a0; --c-gpu: #b794f6; --c-data: #f0b45a;
-    --c-sys: #8fa3b8; --c-ts: #4fd1d9; --c-ext: #9aa4b2;
-    --ok: #5fd0a0; --warn: #f0b45a; --err: #f07178;
-  }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg: #f4f5f8; --panel: #ffffff; --panel2: #f0f2f6; --border: #d6dbe3;
-      --text: #1b1f27; --muted: #566073; --accent: #1a5fd0;
-      --c-net: #1a5fd0; --c-app: #12805a; --c-gpu: #6d3fc0; --c-data: #a35f08;
-      --c-sys: #4b5d73; --c-ts: #0a7f8a; --c-ext: #566073;
-      --ok: #12805a; --warn: #a35f08; --err: #c4343f;
-    }
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; scroll-padding-top: 4rem; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    line-height: 1.45;
-  }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
-
-  /* ---- top bar + nav ---- */
-  .top { background: var(--panel); border-bottom: 1px solid var(--border); }
-  .top-in { max-width: 1280px; margin: 0 auto; padding: 1rem 1.25rem 0.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
-  .top h1 { font-size: 1.3rem; margin: 0; font-weight: 650; }
-  .top .sub { color: var(--muted); font-size: 0.85rem; }
-  .top .spacer { flex: 1; }
-  nav.tabs { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--border); }
-  nav.tabs div { max-width: 1280px; margin: 0 auto; padding: 0 1.25rem; display: flex; gap: 0.25rem; overflow-x: auto; }
-  nav.tabs a { color: var(--muted); padding: 0.6rem 0.8rem; font-size: 0.88rem; white-space: nowrap; border-bottom: 2px solid transparent; }
-  nav.tabs a:hover { color: var(--text); text-decoration: none; border-bottom-color: var(--accent); }
-
-  main { max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
-  section { margin-bottom: 2.5rem; }
-  h2 { font-size: 1.05rem; margin: 0 0 0.9rem; font-weight: 650; letter-spacing: 0.01em; }
-  h2 small { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 0.5rem; }
-  h3 { font-size: 0.95rem; margin: 0 0 0.6rem; }
-  p { margin: 0 0 0.7rem; }
-  .muted { color: var(--muted); }
-
-  /* ---- cards / widgets ---- */
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-  .grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
-  .grid2 { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-  .widget { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--c-sys); border-radius: 10px; padding: 0.85rem 1rem; }
-  .widget.k-app { border-left-color: var(--c-app); } .widget.k-data { border-left-color: var(--c-data); }
-  .widget.k-gpu { border-left-color: var(--c-gpu); } .widget.k-net { border-left-color: var(--c-net); }
-  .widget.k-ts { border-left-color: var(--c-ts); }
-  .w-label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; }
-  .w-value { font-size: 1.3rem; font-weight: 650; margin: 0.15rem 0; }
-  .w-value small { font-size: 0.78rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
-  .w-sub { color: var(--muted); font-size: 0.8rem; }
-  .group-label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 1.1rem 0 0.5rem; }
-  .pill { display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 99px; vertical-align: middle; border: 1px solid var(--border); color: var(--muted); }
-  .pill.ok { color: var(--ok); border-color: var(--ok); } .pill.warn { color: var(--warn); border-color: var(--warn); }
-  .pill.err { color: var(--err); border-color: var(--err); } .pill.info { color: var(--accent); border-color: var(--accent); }
-  .tag { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; color: var(--muted); background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 0.02rem 0.4rem; margin-left: 0.3rem; }
-
-  /* ---- diagrams ---- */
-  .diagram { overflow-x: auto; }
-  .diagram svg { display: block; width: 100%; min-width: 880px; height: auto; }
-  .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; }
-  .legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; border: 1.5px solid; margin-right: 0.35rem; vertical-align: -0.1rem; }
-  svg .node { fill: var(--panel2); stroke: var(--border); stroke-width: 1.3; }
-  svg .k-net { stroke: var(--c-net); fill: color-mix(in srgb, var(--c-net) 11%, var(--panel)); }
-  svg .k-app { stroke: var(--c-app); fill: color-mix(in srgb, var(--c-app) 11%, var(--panel)); }
-  svg .k-data { stroke: var(--c-data); fill: color-mix(in srgb, var(--c-data) 11%, var(--panel)); }
-  svg .k-gpu { stroke: var(--c-gpu); fill: color-mix(in srgb, var(--c-gpu) 11%, var(--panel)); }
-  svg .k-sys { stroke: var(--c-sys); fill: color-mix(in srgb, var(--c-sys) 11%, var(--panel)); }
-  svg .k-ts { stroke: var(--c-ts); fill: color-mix(in srgb, var(--c-ts) 11%, var(--panel)); }
-  svg .k-ext { stroke: var(--c-ext); fill: color-mix(in srgb, var(--c-ext) 8%, var(--panel)); stroke-dasharray: 4 3; }
-  svg .zone { fill: none; stroke: var(--border); stroke-width: 1.3; stroke-dasharray: 6 5; }
-  svg .zone-host { fill: color-mix(in srgb, var(--panel2) 45%, transparent); stroke: var(--muted); stroke-dasharray: none; stroke-width: 1.2; }
-  svg .zone-ts { stroke: var(--c-ts); }
-  svg .edge { fill: none; stroke: var(--muted); stroke-width: 1.6; }
-  svg .edge-ts { fill: none; stroke: var(--c-ts); stroke-width: 1.6; stroke-dasharray: 5 4; }
-  svg .bus { fill: none; stroke: var(--c-net); stroke-width: 3; }
-  svg .ah { fill: var(--muted); } svg .ah-ts { fill: var(--c-ts); }
-  svg .chip { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
-  svg .t { fill: var(--text); font: 600 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
-  svg .s { fill: var(--muted); font: 11px -apple-system, "Segoe UI", Roboto, sans-serif; }
-  svg .m { fill: var(--muted); font: 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
-  svg .ct { fill: var(--text); font: 600 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
-  svg .z { fill: var(--muted); font: 600 10.5px -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
-  svg .tc { text-anchor: middle; } svg .te { text-anchor: end; }
-
-  /* ---- tables / lists ---- */
-  .tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  .tbl th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
-  .tbl td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-  .tbl tr:last-child td { border-bottom: 0; }
-  .scroll { overflow-x: auto; }
-  dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; font-size: 0.85rem; }
-  dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; }
-  ol.steps { margin: 0; padding-left: 1.2rem; font-size: 0.88rem; } ol.steps li { margin-bottom: 0.35rem; }
-  ul.tree, ul.tree ul { list-style: none; margin: 0; padding-left: 1.2rem; border-left: 1px solid var(--border); }
-  ul.tree { padding-left: 0; border-left: 0; font-size: 0.88rem; }
-  ul.tree li { margin: 0.2rem 0; }
-  ul.tree summary { cursor: pointer; }
-  .ph { border: 1px dashed var(--border); border-radius: 10px; padding: 1rem 1.1rem; color: var(--muted); font-size: 0.85rem; }
-  footer { color: var(--muted); font-size: 0.75rem; margin-top: 2rem; }
+{% include 'partials/overview-style.css' %}
 </style>
 </head>
 <body>
@@ -135,11 +24,12 @@
 <nav class="tabs"><div>
   <a href="#summary">Summary</a>
   <a href="#config">Configuration</a>
+  <a href="#arcana-dev">Arcana dev workflow</a>
   <a href="#inventory">Inventory</a>
   <a href="#network">Home network</a>
   <a href="#tailscale">Tailscale access</a>
+  <a href="#subsystems">Subsystems</a>
   <a href="#hierarchy">Hierarchy</a>
-  <a href="#arcana">Arcana 2</a>
   <a href="#ops">Operations</a>
 </div></nav>
 
@@ -191,30 +81,19 @@
     </div>
   </div>
 
-  <div class="group-label">Arcana 2</div>
+  <div class="group-label">Subsystems <span style="text-transform:none;letter-spacing:0">(each has its own page or console)</span></div>
   <div class="grid">
     <div class="widget k-app">
-      <div class="w-label">Runtime</div>
-      <div class="w-value">2 <small>dev nodes</small></div>
-      <div class="w-sub"><span class="mono">arcana-dev</span> :4100 · <span class="mono">arcana-dev-2</span> :4101</div>
+      <div class="w-label">Arcana 2</div>
+      <div class="w-value"><a href="/arcana.html">Details →</a></div>
+      <div class="w-sub">Proof-driven agent OS on BEAM/OTP · 2 dev nodes · console <a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></div>
     </div>
     <div class="widget k-net">
-      <div class="w-label">Admin console</div>
-      <div class="w-value"><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></div>
-      <div class="w-sub">nginx TLS → 127.0.0.1:{{ arcana2_port }}</div>
+      <div class="w-label">Home automation</div>
+      <div class="w-value"><a href="https://{{ tailscale_hostname }}:{{ homeassistant_nginx_port }}">Home Assistant →</a></div>
+      <div class="w-sub">Host-network container for device discovery · nginx :{{ homeassistant_nginx_port }}</div>
     </div>
-    <div class="widget k-data">
-      <div class="w-label">Backend</div>
-      <div class="w-value"><span class="mono">arcana_dev</span></div>
-      <div class="w-sub">YugabyteDB on homelab-net (yugabytedb:5433)</div>
-    </div>
-{% if arcana_summary | length > 0 %}
-{{ arcana_summary }}
-{% endif %}
   </div>
-{% if arcana_summary | length == 0 %}
-  <p class="muted" style="margin-top:0.7rem;font-size:0.8rem">Arcana-specific tiles will appear here once <code>overview-summary.html</code> exists in the arcana2 repo — see <a href="#arcana">Arcana 2</a>.</p>
-{% endif %}
 </section>
 
 <!-- ===================== CONFIGURATION DIAGRAM ===================== -->
@@ -343,6 +222,103 @@
     <span><i style="border-color:var(--c-ext);border-style:dashed"></i>external</span>
   </div>
   <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Rule of thumb: nginx is the only thing facing the tailnet and container ports bind to 127.0.0.1. Two exceptions are visible above: Home Assistant runs on the host network (needed for device discovery), and the Arcana dev nodes also bind the tailnet IP directly.</p>
+  </div>
+</section>
+
+<!-- ===================== ARCANA DEV WORKFLOW ===================== -->
+<section id="arcana-dev">
+  <h2>Arcana 2 development workflow <small>Claude Code + MCP against the live dev cluster</small></h2>
+  <div class="card">
+  <div class="diagram">
+<svg viewBox="0 0 1320 580" role="img" aria-label="Arcana 2 development: Claude Code on the server edits the bind-mounted source and drives the live nodes over MCP; a remote Claude Code and a browser reach the same endpoints over the tailnet">
+  <defs>
+    <marker id="a-dev" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+
+  <!-- devices -->
+  <rect class="zone" x="20" y="60" width="250" height="262" rx="12"/>
+  <text class="z" x="36" y="314">Ian's devices · tailnet</text>
+  <rect class="node k-ts" x="40" y="90" width="210" height="52" rx="8"/>
+  <text class="t" x="56" y="112">Browser</text><text class="s" x="56" y="130">console · chat · journal</text>
+  <rect class="node k-gpu" x="40" y="152" width="210" height="78" rx="8"/>
+  <text class="t" x="56" y="174">Claude Code (remote)</text><text class="s" x="56" y="192">optional · own git checkout</text><text class="m" x="56" y="210">ARCANA_MCP_HOST=100.74.60.51</text>
+  <rect class="node k-ts" x="40" y="246" width="210" height="52" rx="8"/>
+  <text class="t" x="56" y="268">Terminal</text><text class="s" x="56" y="286">ssh speedracer · run `arcana`</text>
+
+  <!-- tailnet lane into the console / MCP port -->
+  <path class="edge-ts" d="M250 116H290"/>
+  <path class="edge-ts" d="M250 191H290V72H835V118" marker-end="url(#a-dev)"/>
+  <text class="m" x="310" y="66">tailnet IP :4100 · browser console + remote MCP</text>
+
+  <!-- speedracer -->
+  <rect class="zone zone-host" x="330" y="44" width="730" height="512" rx="14"/>
+  <text class="z te" x="1046" y="62">speedracer</text>
+
+  <rect class="node k-gpu" x="350" y="228" width="210" height="88" rx="8"/>
+  <text class="t" x="366" y="250">Claude Code</text><text class="s" x="366" y="268">server session · `arcana` wrapper</text><text class="s" x="366" y="285">--name arcana · cwd arcana2</text><text class="m" x="366" y="303">models: Anthropic API</text>
+  <path class="edge" d="M250 272H350" marker-end="url(#a-dev)"/>
+  <text class="m tc" x="300" y="264">ssh</text>
+
+  <rect class="node k-data" x="350" y="332" width="210" height="80" rx="8"/>
+  <text class="t" x="366" y="354">Source checkout</text><text class="s" x="366" y="372">~/projects/arcana2 · git</text><text class="m" x="366" y="390">.worktrees/&lt;subsystem&gt;</text><text class="m" x="366" y="404">main = integration branch</text>
+  <path class="edge" d="M455 316V332" marker-end="url(#a-dev)"/>
+
+  <!-- docker -->
+  <rect class="zone" x="640" y="96" width="390" height="424" rx="10"/>
+  <text class="z" x="652" y="110">docker · homelab-net</text>
+
+  <rect class="node k-app" x="660" y="118" width="350" height="168" rx="8"/>
+  <text class="t" x="676" y="140">arcana-dev · primary · :4100</text>
+  <text class="s" x="676" y="158">source bind-mounted at /workspace</text>
+  <text class="s" x="676" y="174">dev-watch.sh recompiles on save (2–5 s)</text>
+  <rect class="node k-net" x="676" y="186" width="158" height="84" rx="6"/>
+  <text class="t" x="688" y="206">Tidewave MCP</text><text class="m" x="688" y="222">/tidewave/mcp</text><text class="s" x="688" y="240">eval · docs · logs · SQL</text><text class="s" x="688" y="256">dev only, no auth</text>
+  <rect class="node k-net" x="846" y="186" width="152" height="84" rx="6"/>
+  <text class="t" x="858" y="206">Arcana DevMCP</text><text class="m" x="858" y="222">/mcp/arcana</text><text class="s" x="858" y="240">status · registry · journal</text><text class="s" x="858" y="256">lifecycle · kernel_step</text>
+
+  <rect class="node k-app" x="660" y="337" width="350" height="70" rx="8"/>
+  <text class="t" x="676" y="358">arcana-dev-2 · follower · :4101</text>
+  <text class="s" x="676" y="376">same checkout · peer loads modules via :c.lm()</text>
+  <text class="m" x="676" y="394">console + both MCP endpoints · no watcher</text>
+
+  <rect class="node k-data" x="660" y="440" width="350" height="70" rx="8"/>
+  <text class="t" x="676" y="462">yugabytedb</text><text class="s" x="676" y="480">arcana_dev · arcana_test_* per worktree</text><text class="m" x="676" y="497">yugabytedb:5433 (homelab-net)</text>
+
+  <path class="edge" d="M560 272H660" marker-end="url(#a-dev)"/>
+  <text class="m tc" x="610" y="264">MCP :4100</text>
+  <path class="edge" d="M560 372H660" marker-end="url(#a-dev)"/>
+  <text class="m tc" x="610" y="364">bind mount</text>
+  <path class="edge" d="M835 286V337" marker-end="url(#a-dev)"/>
+  <text class="m" x="845" y="316">libcluster · Epmd</text>
+  <path class="edge" d="M835 407V440" marker-end="url(#a-dev)"/>
+  <text class="m" x="845" y="428">YSQL</text>
+  <path class="edge" d="M1010 250H1022V475H1010" marker-end="url(#a-dev)"/>
+
+  <!-- external -->
+  <rect class="node k-ext" x="1090" y="118" width="200" height="76" rx="8"/>
+  <text class="t" x="1106" y="140">Anthropic API</text><text class="s" x="1106" y="158">Claude models for Claude Code</text><text class="s" x="1106" y="174">and Arcana's Lib.LLM calls</text>
+  <path class="edge" d="M1010 160H1090" marker-end="url(#a-dev)"/>
+  <rect class="node k-ext" x="1090" y="340" width="200" height="70" rx="8"/>
+  <text class="t" x="1106" y="362">GitHub</text><text class="s" x="1106" y="380">eslick/arcana2 (private)</text><text class="m" x="1106" y="397">push · pull · PRs</text>
+  <path class="edge" d="M455 412V540H1190V410" marker-end="url(#a-dev)"/>
+  <text class="m tc" x="800" y="534">git push / pull</text>
+</svg>
+  </div>
+  <div class="legend">
+    <span><i style="border-color:var(--c-gpu)"></i>Claude Code</span>
+    <span><i style="border-color:var(--c-app)"></i>Arcana nodes</span>
+    <span><i style="border-color:var(--c-net)"></i>MCP endpoints</span>
+    <span><i style="border-color:var(--c-data)"></i>source / data</span>
+    <span><i style="border-color:var(--c-ts)"></i>tailnet clients</span>
+  </div>
+  <ol class="steps" style="margin-top:0.9rem">
+    <li><strong>Edit.</strong> Claude Code runs on speedracer (<code>arcana</code> wrapper, over ssh from the laptop) and edits <span class="mono">~/projects/arcana2</span>. The same directory is bind-mounted at <span class="mono">/workspace</span> in both containers.</li>
+    <li><strong>Hot reload.</strong> The primary's <span class="mono">dev-watch.sh</span> recompiles on save and tells the follower to load the new modules. Dependency or compile-time config changes need <code>make dev.down dev.up</code>.</li>
+    <li><strong>Inspect and drive over MCP.</strong> <span class="mono">.mcp.json</span> points at <span class="mono">127.0.0.1:4100</span> for sessions on the server. Tidewave gives eval, docs, logs and SQL; DevMCP gives typed registry, journal, model and lifecycle tools, and every mutating call is audited in journal stream <span class="mono">dev_mcp:audit</span>.</li>
+    <li><strong>Check.</strong> Tests and provers run in a container (<code>docker exec arcana-dev make check</code>), never in the live node.</li>
+    <li><strong>Remote Claude Code.</strong> A client on another machine sets <code>ARCANA_MCP_HOST</code> to the tailnet IP to use the same two MCP endpoints, and syncs source through GitHub.</li>
+  </ol>
+  <p class="callout">The MCP endpoints have no authentication. The boundary is the <span class="mono">ARCANA_ADMIN</span> gate plus the network bind: loopback and the tailnet IP only, never all interfaces. Details and the system architecture are on the <a href="/arcana.html">Arcana 2 page</a>.</p>
   </div>
 </section>
 
@@ -538,16 +514,7 @@
             <li>minio <span class="tag">S3</span></li>
             <li><details open><summary>yugabytedb <span class="tag">YSQL :5433</span></summary>
               <ul><li><span class="mono">arcana_dev</span> (+ per-worktree <span class="mono">arcana_test_*</span>)</li><li>legacy databases kept untouched</li></ul></details></li>
-            <li><details open id="arcana-tree"><summary><strong>Arcana 2</strong> <span class="tag">~/projects/arcana2</span></summary>
-              <ul>
-                <li>arcana-dev <span class="tag">:4100</span> · arcana-dev-2 <span class="tag">:4101</span></li>
-                <li>admin console <span class="tag">nginx :{{ arcana2_nginx_port }}</span></li>
-{% if arcana_hierarchy | length > 0 %}
-{{ arcana_hierarchy }}
-{% else %}
-                <li class="muted">internal structure: not yet provided (<code>overview-hierarchy.html</code>)</li>
-{% endif %}
-              </ul></details></li>
+            <li><strong>Arcana 2</strong> <span class="tag">~/projects/arcana2</span> <span class="tag">arcana-dev :4100 · arcana-dev-2 :4101</span> → <a href="/arcana.html">architecture and internals</a></li>
           </ul></details></li>
         <li><details><summary>Host services <span class="tag">systemd · cron</span></summary>
           <ul><li>nginx · tailscaled · docker · sshd · postfix</li><li>syncthing → /opt/vaults/obsidian</li><li>smartd · mdmonitor · nvidia-persistenced</li><li>restic 03:00 · Claude health check 08:00 · cert renewal Sun 03:00</li></ul></details></li>
@@ -556,38 +523,31 @@
   </div>
 </section>
 
-<!-- ===================== ARCANA ===================== -->
-<section id="arcana">
-  <h2>Arcana 2 <small>runtime wiring (homelab) and internals (from the arcana2 repo)</small></h2>
+<!-- ===================== SUBSYSTEMS ===================== -->
+<section id="subsystems">
+  <h2>Subsystems <small>this dashboard stays at homelab level; each subsystem owns a page</small></h2>
   <div class="grid2">
     <div class="card">
-      <h3>Runtime wiring <span class="muted" style="font-weight:400">(owned by the homelab)</span></h3>
+      <h3><a href="/arcana.html">Arcana 2 →</a></h3>
+      <p class="muted" style="font-size:0.85rem">A proof-driven operating system for AI agents on BEAM/OTP, developed live on this host. The page covers the layered architecture (L0–L8), how the subsystems connect, the intent → proof → running-kernel pipeline, the development workflow and the runtime wiring.</p>
       <dl class="kv">
-        <dt>Source</dt><dd class="mono">{{ arcana2_src_path }} (bind-mounted at /workspace)</dd>
-        <dt>Containers</dt><dd class="mono">arcana-dev :4100, arcana-dev-2 :4101</dd>
+        <dt>Nodes</dt><dd class="mono">arcana-dev :4100, arcana-dev-2 :4101</dd>
         <dt>Console</dt><dd><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}</a></dd>
-        <dt>Database</dt><dd><span class="mono">arcana_dev</span> on YugabyteDB (homelab-net)</dd>
-        <dt>LLM</dt><dd>Anthropic API (key in a root-only env file)</dd>
-        <dt>Live reload</dt><dd>host edits recompile into the running node in a few seconds</dd>
-        <dt>Playbook</dt><dd class="mono">playbooks/arcana2.yml</dd>
+        <dt>Database</dt><dd><span class="mono">arcana_dev</span> on YugabyteDB</dd>
+        <dt>Dev loop</dt><dd><a href="#arcana-dev">Claude Code + MCP workflow</a></dd>
       </dl>
     </div>
     <div class="card">
-      <h3>Add Arcana's own details here</h3>
-      <p class="muted" style="font-size:0.85rem">The Arcana session writes up to three HTML fragments in the arcana2 repo and the homelab publishes them into this page: summary tiles, hierarchy items, and detail cards or diagrams.</p>
+      <h3><a href="https://{{ tailscale_hostname }}:{{ homeassistant_nginx_port }}">Home Assistant →</a></h3>
+      <p class="muted" style="font-size:0.85rem">Home automation. Runs on the host network so mDNS/SSDP device discovery works; nginx adds TLS on the tailnet.</p>
       <dl class="kv">
-        <dt>Files</dt><dd class="mono">{{ arcana_overview_dir }}/</dd>
-        <dt>Slots</dt><dd><span class="mono">overview-summary.html</span> · <span class="mono">overview-hierarchy.html</span> · <span class="mono">overview-details.html</span></dd>
-        <dt>Publish</dt><dd class="mono">ansible-playbook playbooks/nginx.yml --tags overview</dd>
+        <dt>Container</dt><dd class="mono">homeassistant (host network :{{ homeassistant_port }})</dd>
+        <dt>Tailnet URL</dt><dd><a href="https://{{ tailscale_hostname }}:{{ homeassistant_nginx_port }}">https://{{ tailscale_hostname }}:{{ homeassistant_nginx_port }}</a></dd>
+        <dt>Config</dt><dd class="mono">/opt/compose/homeassistant/config</dd>
+        <dt>Playbook</dt><dd class="mono">playbooks/homeassistant.yml</dd>
       </dl>
-      <p style="margin:0.7rem 0 0"><a href="/arcana-overview-contract.txt">Instructions for the Arcana process →</a></p>
     </div>
   </div>
-{% if arcana_details | length > 0 %}
-{{ arcana_details }}
-{% else %}
-  <div class="ph">No Arcana-provided details yet. Point the arcana2 session at <code>~/homelab/docs/arcana-overview-contract.md</code> (also at <a href="/arcana-overview-contract.txt">/arcana-overview-contract.txt</a>) and have it create the fragments listed above.</div>
-{% endif %}
 </section>
 
 <!-- ===================== OPERATIONS ===================== -->
