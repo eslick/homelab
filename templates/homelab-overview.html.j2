@@ -1,0 +1,628 @@
+{#- Optional Arcana-supplied fragments (contract: docs/arcana-overview-contract.md). Missing file => empty string. -#}
+{%- set arcana_summary = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-summary.html', errors='ignore') | default('', true) -%}
+{%- set arcana_hierarchy = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-hierarchy.html', errors='ignore') | default('', true) -%}
+{%- set arcana_details = lookup('ansible.builtin.file', arcana_overview_dir ~ '/overview-details.html', errors='ignore') | default('', true) -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>speedracer — homelab overview</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212a; --border: #2a303c;
+    --text: #e6e8ec; --muted: #9aa4b2; --accent: #6ea8fe;
+    --c-net: #6ea8fe; --c-app: #5fd0a0; --c-gpu: #b794f6; --c-data: #f0b45a;
+    --c-sys: #8fa3b8; --c-ts: #4fd1d9; --c-ext: #9aa4b2;
+    --ok: #5fd0a0; --warn: #f0b45a; --err: #f07178;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f5f8; --panel: #ffffff; --panel2: #f0f2f6; --border: #d6dbe3;
+      --text: #1b1f27; --muted: #566073; --accent: #1a5fd0;
+      --c-net: #1a5fd0; --c-app: #12805a; --c-gpu: #6d3fc0; --c-data: #a35f08;
+      --c-sys: #4b5d73; --c-ts: #0a7f8a; --c-ext: #566073;
+      --ok: #12805a; --warn: #a35f08; --err: #c4343f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 4rem; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.45;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
+
+  /* ---- top bar + nav ---- */
+  .top { background: var(--panel); border-bottom: 1px solid var(--border); }
+  .top-in { max-width: 1280px; margin: 0 auto; padding: 1rem 1.25rem 0.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
+  .top h1 { font-size: 1.3rem; margin: 0; font-weight: 650; }
+  .top .sub { color: var(--muted); font-size: 0.85rem; }
+  .top .spacer { flex: 1; }
+  nav.tabs { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--border); }
+  nav.tabs div { max-width: 1280px; margin: 0 auto; padding: 0 1.25rem; display: flex; gap: 0.25rem; overflow-x: auto; }
+  nav.tabs a { color: var(--muted); padding: 0.6rem 0.8rem; font-size: 0.88rem; white-space: nowrap; border-bottom: 2px solid transparent; }
+  nav.tabs a:hover { color: var(--text); text-decoration: none; border-bottom-color: var(--accent); }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+  section { margin-bottom: 2.5rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 0.9rem; font-weight: 650; letter-spacing: 0.01em; }
+  h2 small { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 0.5rem; }
+  h3 { font-size: 0.95rem; margin: 0 0 0.6rem; }
+  p { margin: 0 0 0.7rem; }
+  .muted { color: var(--muted); }
+
+  /* ---- cards / widgets ---- */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+  .grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .grid2 { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .widget { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--c-sys); border-radius: 10px; padding: 0.85rem 1rem; }
+  .widget.k-app { border-left-color: var(--c-app); } .widget.k-data { border-left-color: var(--c-data); }
+  .widget.k-gpu { border-left-color: var(--c-gpu); } .widget.k-net { border-left-color: var(--c-net); }
+  .widget.k-ts { border-left-color: var(--c-ts); }
+  .w-label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; }
+  .w-value { font-size: 1.3rem; font-weight: 650; margin: 0.15rem 0; }
+  .w-value small { font-size: 0.78rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .w-sub { color: var(--muted); font-size: 0.8rem; }
+  .group-label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 1.1rem 0 0.5rem; }
+  .pill { display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 99px; vertical-align: middle; border: 1px solid var(--border); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: var(--ok); } .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.err { color: var(--err); border-color: var(--err); } .pill.info { color: var(--accent); border-color: var(--accent); }
+  .tag { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; color: var(--muted); background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 0.02rem 0.4rem; margin-left: 0.3rem; }
+
+  /* ---- diagrams ---- */
+  .diagram { overflow-x: auto; }
+  .diagram svg { display: block; width: 100%; min-width: 880px; height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; }
+  .legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; border: 1.5px solid; margin-right: 0.35rem; vertical-align: -0.1rem; }
+  svg .node { fill: var(--panel2); stroke: var(--border); stroke-width: 1.3; }
+  svg .k-net { stroke: var(--c-net); fill: color-mix(in srgb, var(--c-net) 11%, var(--panel)); }
+  svg .k-app { stroke: var(--c-app); fill: color-mix(in srgb, var(--c-app) 11%, var(--panel)); }
+  svg .k-data { stroke: var(--c-data); fill: color-mix(in srgb, var(--c-data) 11%, var(--panel)); }
+  svg .k-gpu { stroke: var(--c-gpu); fill: color-mix(in srgb, var(--c-gpu) 11%, var(--panel)); }
+  svg .k-sys { stroke: var(--c-sys); fill: color-mix(in srgb, var(--c-sys) 11%, var(--panel)); }
+  svg .k-ts { stroke: var(--c-ts); fill: color-mix(in srgb, var(--c-ts) 11%, var(--panel)); }
+  svg .k-ext { stroke: var(--c-ext); fill: color-mix(in srgb, var(--c-ext) 8%, var(--panel)); stroke-dasharray: 4 3; }
+  svg .zone { fill: none; stroke: var(--border); stroke-width: 1.3; stroke-dasharray: 6 5; }
+  svg .zone-host { fill: color-mix(in srgb, var(--panel2) 45%, transparent); stroke: var(--muted); stroke-dasharray: none; stroke-width: 1.2; }
+  svg .zone-ts { stroke: var(--c-ts); }
+  svg .edge { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+  svg .edge-ts { fill: none; stroke: var(--c-ts); stroke-width: 1.6; stroke-dasharray: 5 4; }
+  svg .bus { fill: none; stroke: var(--c-net); stroke-width: 3; }
+  svg .ah { fill: var(--muted); } svg .ah-ts { fill: var(--c-ts); }
+  svg .chip { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+  svg .t { fill: var(--text); font: 600 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  svg .s { fill: var(--muted); font: 11px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  svg .m { fill: var(--muted); font: 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  svg .ct { fill: var(--text); font: 600 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  svg .z { fill: var(--muted); font: 600 10.5px -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+  svg .tc { text-anchor: middle; } svg .te { text-anchor: end; }
+
+  /* ---- tables / lists ---- */
+  .tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .tbl th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+  .tbl td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .scroll { overflow-x: auto; }
+  dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; font-size: 0.85rem; }
+  dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; }
+  ol.steps { margin: 0; padding-left: 1.2rem; font-size: 0.88rem; } ol.steps li { margin-bottom: 0.35rem; }
+  ul.tree, ul.tree ul { list-style: none; margin: 0; padding-left: 1.2rem; border-left: 1px solid var(--border); }
+  ul.tree { padding-left: 0; border-left: 0; font-size: 0.88rem; }
+  ul.tree li { margin: 0.2rem 0; }
+  ul.tree summary { cursor: pointer; }
+  .ph { border: 1px dashed var(--border); border-radius: 10px; padding: 1rem 1.1rem; color: var(--muted); font-size: 0.85rem; }
+  footer { color: var(--muted); font-size: 0.75rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+
+<header class="top"><div class="top-in">
+  <div>
+    <h1>speedracer <span class="muted" style="font-weight:400">· homelab overview</span></h1>
+    <div class="sub">{{ tailscale_hostname }} · single-node Docker Compose host · configuration view (snapshot {{ overview_snapshot_date }})</div>
+  </div>
+  <div class="spacer"></div>
+  <span class="pill info">Tailscale-only ingress</span>
+  <span class="pill ok">Ansible-managed</span>
+  <a href="/">← Services index</a>
+</div></header>
+
+<nav class="tabs"><div>
+  <a href="#summary">Summary</a>
+  <a href="#config">Configuration</a>
+  <a href="#inventory">Inventory</a>
+  <a href="#network">Home network</a>
+  <a href="#tailscale">Tailscale access</a>
+  <a href="#hierarchy">Hierarchy</a>
+  <a href="#arcana">Arcana 2</a>
+  <a href="#ops">Operations</a>
+</div></nav>
+
+<main>
+
+<!-- ===================== SUMMARY ===================== -->
+<section id="summary">
+  <h2>Summary <small>what this machine is and what it runs</small></h2>
+  <div class="grid">
+    <div class="widget k-net">
+      <div class="w-label">Host</div>
+      <div class="w-value">speedracer</div>
+      <div class="w-sub">Ubuntu 24.04 LTS · Threadripper 3960X (24 cores) · 125 GiB RAM</div>
+    </div>
+    <div class="widget k-app">
+      <div class="w-label">Containers</div>
+      <div class="w-value">6 <small>running + 1 on demand</small></div>
+      <div class="w-sub">Home Assistant, MinIO, YugabyteDB, 2× Arcana, sglang-watcher; sglang starts when the LLM API is called</div>
+    </div>
+    <div class="widget k-gpu">
+      <div class="w-label">GPU · local LLM</div>
+      <div class="w-value">2× RTX 3090 <small>48 GB</small></div>
+      <div class="w-sub">Qwen3.6-35B-A3B-AWQ, tensor-parallel ×2, OpenAI-compatible API on :{{ vllm_nginx_port }}, stops after 5 idle minutes</div>
+    </div>
+    <div class="widget k-data">
+      <div class="w-label">Database</div>
+      <div class="w-value">YugabyteDB <small>YSQL</small></div>
+      <div class="w-sub">The only SQL database (2025.2.6.0). Loopback-only :5433; Arcana uses <span class="mono">arcana_dev</span></div>
+    </div>
+    <div class="widget k-data">
+      <div class="w-label">Storage <span class="muted">(snapshot)</span></div>
+      <div class="w-value">914 GB <small>root · 59%</small></div>
+      <div class="w-sub">RAID 5 4×4 TB on /mnt/data (4/4 healthy) · NAS 11 TB on /mnt/nas (53% used)</div>
+    </div>
+    <div class="widget k-ts">
+      <div class="w-label">Network</div>
+      <div class="w-value">100.74.60.51 <small>tailnet</small></div>
+      <div class="w-sub">LAN 192.168.50.100 · gateway 192.168.50.1 · 3 devices on the tailnet</div>
+    </div>
+    <div class="widget k-app">
+      <div class="w-label">Backups</div>
+      <div class="w-value">Nightly <small>03:00</small></div>
+      <div class="w-sub">restic → NAS (/mnt/nas/backups/homelab); the NAS syncs to S3 on its own</div>
+    </div>
+    <div class="widget k-sys">
+      <div class="w-label">Change control</div>
+      <div class="w-value">Ansible only</div>
+      <div class="w-sub">playbooks/ + templates/ in git, a runbook per change, daily Claude health check at 08:00</div>
+    </div>
+  </div>
+
+  <div class="group-label">Arcana 2</div>
+  <div class="grid">
+    <div class="widget k-app">
+      <div class="w-label">Runtime</div>
+      <div class="w-value">2 <small>dev nodes</small></div>
+      <div class="w-sub"><span class="mono">arcana-dev</span> :4100 · <span class="mono">arcana-dev-2</span> :4101</div>
+    </div>
+    <div class="widget k-net">
+      <div class="w-label">Admin console</div>
+      <div class="w-value"><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></div>
+      <div class="w-sub">nginx TLS → 127.0.0.1:{{ arcana2_port }}</div>
+    </div>
+    <div class="widget k-data">
+      <div class="w-label">Backend</div>
+      <div class="w-value"><span class="mono">arcana_dev</span></div>
+      <div class="w-sub">YugabyteDB on homelab-net (yugabytedb:5433)</div>
+    </div>
+{% if arcana_summary | length > 0 %}
+{{ arcana_summary }}
+{% endif %}
+  </div>
+{% if arcana_summary | length == 0 %}
+  <p class="muted" style="margin-top:0.7rem;font-size:0.8rem">Arcana-specific tiles will appear here once <code>overview-summary.html</code> exists in the arcana2 repo — see <a href="#arcana">Arcana 2</a>.</p>
+{% endif %}
+</section>
+
+<!-- ===================== CONFIGURATION DIAGRAM ===================== -->
+<section id="config">
+  <h2>Configuration diagram <small>ingress → containers → host services → storage</small></h2>
+  <div class="card">
+  <div class="diagram">
+<svg viewBox="0 0 1400 850" role="img" aria-label="Homelab configuration: Tailscale ingress through UFW and nginx to Docker containers, host services, and storage">
+  <defs>
+    <marker id="a-cfg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+
+  <!-- clients + host zone -->
+  <rect class="node k-ts" x="40" y="14" width="260" height="46" rx="8"/>
+  <text class="t" x="56" y="34">Tailnet clients</text><text class="s" x="56" y="50">MacBook · iPhone (see Tailscale access)</text>
+  <path class="edge" d="M170 60V112" marker-end="url(#a-cfg)"/>
+  <rect class="zone zone-host" x="20" y="80" width="1160" height="680" rx="14"/>
+  <text class="z te" x="1164" y="99">speedracer · Ubuntu 24.04 · Threadripper 3960X · 125 GiB RAM</text>
+
+  <!-- ingress row -->
+  <rect class="node k-ts" x="40" y="112" width="260" height="52" rx="8"/>
+  <text class="t" x="56" y="134">tailscale0</text><text class="s" x="56" y="152">100.74.60.51 · MagicDNS + TLS cert</text>
+  <rect class="node k-net" x="340" y="112" width="300" height="52" rx="8"/>
+  <text class="t" x="356" y="134">UFW firewall</text><text class="s" x="356" y="152">default deny · allow per port on tailscale0</text>
+  <rect class="node k-sys" x="700" y="112" width="460" height="52" rx="8"/>
+  <text class="t" x="716" y="134">Ansible-only change control</text><text class="s" x="716" y="152">playbooks/ + templates/ → GitHub · runbooks/ for every change</text>
+  <path class="edge" d="M300 138H340" marker-end="url(#a-cfg)"/>
+  <path class="edge" d="M490 164V200" marker-end="url(#a-cfg)"/>
+
+  <!-- nginx -->
+  <rect class="node k-net" x="40" y="200" width="1120" height="56" rx="8"/>
+  <text class="t" x="58" y="224">nginx — sole ingress: TLS termination + reverse proxy</text>
+  <text class="s" x="58" y="243">Tailscale-issued certificate · proxies to 127.0.0.1 ports · also serves the static index and this overview on :443 (:80 redirects)</text>
+
+  <!-- nginx -> containers -->
+  <path class="edge" d="M144 256V326" marker-end="url(#a-cfg)"/>
+  <path class="edge" d="M372 256V326" marker-end="url(#a-cfg)"/>
+  <path class="edge" d="M600 256V326" marker-end="url(#a-cfg)"/>
+  <path class="edge" d="M828 256V326" marker-end="url(#a-cfg)"/>
+  <path class="edge" d="M1056 256V326" marker-end="url(#a-cfg)"/>
+  <rect class="chip" x="108" y="278" width="72" height="18" rx="9"/><text class="ct tc" x="144" y="291">:{{ homeassistant_nginx_port }}</text>
+  <rect class="chip" x="336" y="278" width="72" height="18" rx="9"/><text class="ct tc" x="372" y="291">:{{ vllm_nginx_port }}</text>
+  <rect class="chip" x="564" y="278" width="72" height="18" rx="9"/><text class="ct tc" x="600" y="291">:{{ minio_console_nginx_port }}</text>
+  <rect class="chip" x="792" y="278" width="72" height="18" rx="9"/><text class="ct tc" x="828" y="291">:{{ yugabytedb_ui_nginx_port }}</text>
+  <rect class="chip" x="1020" y="278" width="72" height="18" rx="9"/><text class="ct tc" x="1056" y="291">:{{ arcana2_nginx_port }}</text>
+
+  <!-- docker zone -->
+  <rect class="zone" x="250" y="300" width="920" height="226" rx="10"/>
+  <text class="z" x="262" y="317">homelab-net</text>
+
+  <rect class="node k-app" x="40" y="326" width="208" height="70" rx="8"/>
+  <text class="t" x="54" y="348">homeassistant</text><text class="s" x="54" y="365">Home Assistant Core · host net</text><text class="m" x="54" y="382">:{{ homeassistant_port }} on the host</text>
+
+  <rect class="node k-gpu" x="268" y="326" width="208" height="70" rx="8"/>
+  <text class="t" x="282" y="348">sglang-watcher</text><text class="s" x="282" y="365">lazy-start proxy · idle 5 min</text><text class="m" x="282" y="382">127.0.0.1:{{ vllm_port }}</text>
+  <path class="edge" d="M372 396V424" marker-end="url(#a-cfg)"/>
+  <text class="m" x="382" y="414">docker.sock</text>
+  <rect class="node k-gpu" x="268" y="424" width="208" height="70" rx="8"/>
+  <text class="t" x="282" y="446">sglang</text><text class="s" x="282" y="463">Qwen3.6-35B-A3B-AWQ</text><text class="m" x="282" y="480">TP=2 · starts on demand</text>
+
+  <rect class="node k-data" x="496" y="326" width="208" height="70" rx="8"/>
+  <text class="t" x="510" y="348">minio</text><text class="s" x="510" y="365">S3 storage · built from source</text><text class="m" x="510" y="382">API :9000 · UI :9001</text>
+
+  <rect class="node k-data" x="724" y="326" width="208" height="70" rx="8"/>
+  <text class="t" x="738" y="348">yugabytedb</text><text class="s" x="738" y="365">the SQL database (YSQL)</text><text class="m" x="738" y="382">127.0.0.1:5433 · UI :7000</text>
+
+  <rect class="node k-app" x="952" y="326" width="208" height="70" rx="8"/>
+  <text class="t" x="966" y="348">arcana-dev</text><text class="s" x="966" y="365">Arcana 2 dev node (Elixir)</text><text class="m" x="966" y="382">127.0.0.1:4100 + tailnet IP</text>
+  <rect class="node k-app" x="952" y="424" width="208" height="70" rx="8"/>
+  <text class="t" x="966" y="446">arcana-dev-2</text><text class="s" x="966" y="463">Arcana 2 dev node #2</text><text class="m" x="966" y="480">tailnet IP :4101 · direct</text>
+  <path class="edge" d="M952 361H932" marker-end="url(#a-cfg)"/>
+  <path class="edge" d="M952 459H828V396" marker-end="url(#a-cfg)"/>
+  <text class="m tc" x="890" y="451">YSQL arcana_dev</text>
+
+  <!-- external: Anthropic -->
+  <rect class="node k-ext" x="1215" y="326" width="170" height="70" rx="8"/>
+  <text class="t" x="1229" y="348">Anthropic API</text><text class="s" x="1229" y="365">LLM calls from Arcana</text><text class="m" x="1229" y="382">HTTPS · API key</text>
+  <path class="edge" d="M1160 361H1215" marker-end="url(#a-cfg)"/>
+  <path class="edge" d="M1160 459H1198V361"/>
+
+  <!-- host services -->
+  <text class="z" x="40" y="543">Host services (systemd · cron)</text>
+  <rect class="node k-sys" x="40" y="552" width="208" height="70" rx="8"/>
+  <text class="t" x="54" y="574">syncthing</text><text class="s" x="54" y="591">Obsidian vault sync</text><text class="m" x="54" y="608">tailnet :22000 → /opt/vaults</text>
+  <rect class="node k-sys" x="496" y="552" width="208" height="70" rx="8"/>
+  <text class="t" x="510" y="574">system daemons</text><text class="s" x="510" y="591">sshd · docker · tailscaled</text><text class="m" x="510" y="608">smartd · mdmonitor · power</text>
+  <rect class="node k-sys" x="724" y="552" width="208" height="70" rx="8"/>
+  <text class="t" x="738" y="574">scheduled jobs</text><text class="s" x="738" y="591">restic 03:00 · health 08:00</text><text class="m" x="738" y="608">cert renew Sun 03:00</text>
+  <rect class="node k-sys" x="952" y="552" width="208" height="70" rx="8"/>
+  <text class="t" x="966" y="574">postfix</text><text class="s" x="966" y="591">Gmail SMTP relay</text><text class="m" x="966" y="608">alerts and cron mail</text>
+  <rect class="node k-ext" x="1215" y="552" width="170" height="70" rx="8"/>
+  <text class="t" x="1229" y="574">Gmail SMTP</text><text class="s" x="1229" y="591">outbound mail relay</text>
+  <path class="edge" d="M1160 587H1215" marker-end="url(#a-cfg)"/>
+
+  <!-- hardware + storage -->
+  <text class="z" x="40" y="657">Hardware and storage</text>
+  <rect class="node k-data" x="40" y="666" width="208" height="70" rx="8"/>
+  <text class="t" x="54" y="688">root volume (LVM)</text><text class="s" x="54" y="705">ubuntu-vg · 914 GB</text><text class="m" x="54" y="722">/home /etc /opt /var/lib/docker</text>
+  <rect class="node k-gpu" x="268" y="666" width="208" height="70" rx="8"/>
+  <text class="t" x="282" y="688">2× RTX 3090</text><text class="s" x="282" y="705">48 GB VRAM total</text><text class="m" x="282" y="722">nvidia-persistenced · CUDA</text>
+  <rect class="node k-data" x="496" y="666" width="208" height="70" rx="8"/>
+  <text class="t" x="510" y="688">md0 · RAID 5</text><text class="s" x="510" y="705">4 × 4 TB WD Red · 11 TB</text><text class="m" x="510" y="722">/mnt/data · 4/4 healthy</text>
+  <rect class="node k-data" x="724" y="666" width="208" height="70" rx="8"/>
+  <text class="t" x="738" y="688">NAS mount (CIFS)</text><text class="s" x="738" y="705">//192.168.50.101/ServerBackup</text><text class="m" x="738" y="722">/mnt/nas · restic repo</text>
+  <path class="edge" d="M372 494V666" marker-end="url(#a-cfg)"/>
+  <text class="m" x="382" y="598">tensor-parallel ×2</text>
+  <path class="edge" d="M828 622V666" marker-end="url(#a-cfg)"/>
+  <text class="m" x="838" y="648">restic</text>
+
+  <rect class="node k-ext" x="1215" y="666" width="170" height="70" rx="8"/>
+  <text class="t" x="1229" y="688">NAS</text><text class="s" x="1229" y="705">192.168.50.101 · 11 TB</text><text class="m" x="1229" y="722">SMB share</text>
+  <path class="edge" d="M932 701H1215" marker-end="url(#a-cfg)"/>
+  <text class="m tc" x="1075" y="693">SMB</text>
+  <rect class="node k-ext" x="1215" y="770" width="170" height="56" rx="8"/>
+  <text class="t" x="1229" y="792">AWS S3</text><text class="s" x="1229" y="810">offsite, synced by the NAS</text>
+  <path class="edge" d="M1300 736V770" marker-end="url(#a-cfg)"/>
+</svg>
+  </div>
+  <div class="legend">
+    <span><i style="border-color:var(--c-net)"></i>ingress / network</span>
+    <span><i style="border-color:var(--c-app)"></i>applications</span>
+    <span><i style="border-color:var(--c-gpu)"></i>GPU / inference</span>
+    <span><i style="border-color:var(--c-data)"></i>data / storage</span>
+    <span><i style="border-color:var(--c-sys)"></i>host services</span>
+    <span><i style="border-color:var(--c-ts)"></i>Tailscale</span>
+    <span><i style="border-color:var(--c-ext);border-style:dashed"></i>external</span>
+  </div>
+  <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Rule of thumb: nginx is the only thing facing the tailnet and container ports bind to 127.0.0.1. Two exceptions are visible above: Home Assistant runs on the host network (needed for device discovery), and the Arcana dev nodes also bind the tailnet IP directly.</p>
+  </div>
+</section>
+
+<!-- ===================== INVENTORY ===================== -->
+<section id="inventory">
+  <h2>Service inventory <small>from the Ansible playbooks</small></h2>
+  <div class="card scroll">
+  <table class="tbl">
+    <tr><th>Service</th><th>Container(s)</th><th>Version / image</th><th>Bind</th><th>nginx (tailnet TLS)</th><th>State</th><th>Playbook</th></tr>
+    <tr><td>Home Assistant</td><td class="mono">homeassistant</td><td>ghcr.io/home-assistant/home-assistant:stable</td><td>host network :{{ homeassistant_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ homeassistant_nginx_port }}">:{{ homeassistant_nginx_port }}</a></td><td class="mono">/opt/compose/homeassistant/config</td><td class="mono">homeassistant.yml</td></tr>
+    <tr><td>Local LLM API</td><td class="mono">sglang-watcher, sglang</td><td>sglang-base:working · Qwen3.6-35B-A3B-AWQ</td><td>127.0.0.1:{{ vllm_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ vllm_nginx_port }}">:{{ vllm_nginx_port }}</a></td><td class="mono">vllm-models volume (HF cache)</td><td class="mono">sglang.yml <span class="muted">(vllm.yml = alternative)</span></td></tr>
+    <tr><td>MinIO</td><td class="mono">minio</td><td>RELEASE.2025-10-15 (built from source)</td><td>API 0.0.0.0:9000 · console 127.0.0.1:{{ minio_console_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ minio_console_nginx_port }}">:{{ minio_console_nginx_port }}</a></td><td class="mono">Docker volume</td><td class="mono">docker.yml</td></tr>
+    <tr><td>YugabyteDB</td><td class="mono">yugabytedb</td><td>2025.2.6.0-b111</td><td>127.0.0.1:5433 · UI 127.0.0.1:{{ yugabytedb_ui_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ yugabytedb_ui_nginx_port }}">:{{ yugabytedb_ui_nginx_port }}</a></td><td class="mono">yugabyte-data volume</td><td class="mono">docker.yml</td></tr>
+    <tr><td>Arcana 2</td><td class="mono">arcana-dev, arcana-dev-2</td><td>arcana-dev:local (Elixir)</td><td>127.0.0.1:{{ arcana2_port }}/4101 + tailnet IP</td><td><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></td><td class="mono">~/projects/arcana2 (bind mount)</td><td class="mono">arcana2.yml</td></tr>
+    <tr><td>Static index + overview</td><td class="mono">— (nginx)</td><td>nginx 1.24</td><td>tailnet IP :80 → :443</td><td><a href="/">:443</a></td><td class="mono">/var/www/tailscale-index</td><td class="mono">nginx.yml</td></tr>
+  </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Host services</h3>
+      <dl class="kv">
+        <dt>nginx</dt><dd>TLS ingress on the tailnet IP</dd>
+        <dt>tailscaled</dt><dd>tailnet node, issues the TLS cert</dd>
+        <dt>docker</dt><dd>Compose v2, network <span class="mono">homelab-net</span></dd>
+        <dt>sshd</dt><dd>remote shell</dd>
+        <dt>syncthing</dt><dd>Obsidian vault sync (/opt/vaults/obsidian)</dd>
+        <dt>postfix</dt><dd>Gmail relay for alerts and cron mail</dd>
+        <dt>smartd, mdmonitor</dt><dd>disk and RAID health</dd>
+        <dt>nvidia-persistenced</dt><dd>keeps the GPUs initialised</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>Retired <span class="muted" style="font-weight:400">(removed, not running)</span></h3>
+      <dl class="kv">
+        <dt>CockroachDB, Datomic</dt><dd>uninstalled 2026-10-03; YugabyteDB is the only SQL DB</dd>
+        <dt>homedev</dt><dd>removed 2026-10-03</dd>
+        <dt>Arcana v1 / AgentOS</dt><dd>retired; Arcana 2 replaces it</dd>
+        <dt>OpenClaw</dt><dd>removed 2026-04</dd>
+        <dt>Obsidian CouchDB</dt><dd>decommissioned; Syncthing syncs the vault</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== HOME NETWORK ===================== -->
+<section id="network">
+  <h2>Home network <small>LAN 192.168.50.0/24</small></h2>
+  <div class="card">
+  <div class="diagram">
+<svg viewBox="0 0 1040 520" role="img" aria-label="Home network: router, LAN, server, NAS, laptop, phones and smart-home devices, with the Tailscale overlay">
+  <defs>
+    <marker id="a-net" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+  <rect class="node k-ts" x="60" y="24" width="200" height="52" rx="8"/>
+  <text class="t" x="76" y="46">Tailscale control plane</text><text class="s" x="76" y="63">coordination · DERP relays</text>
+  <rect class="node k-ext" x="420" y="24" width="200" height="52" rx="26"/>
+  <text class="t tc" x="520" y="55">Internet</text>
+  <rect class="node k-ext" x="780" y="24" width="200" height="52" rx="8"/>
+  <text class="t" x="796" y="46">AWS S3</text><text class="s" x="796" y="63">offsite copy of the NAS backups</text>
+  <path class="edge" d="M420 50H260"/><path class="edge" d="M620 50H780"/>
+  <text class="m tc" x="700" y="42">NAS → S3 sync</text>
+
+  <rect class="node k-net" x="410" y="130" width="220" height="60" rx="8"/>
+  <text class="t" x="426" y="153">Router / gateway</text><text class="s" x="426" y="171">192.168.50.1 · DHCP · NAT</text>
+  <path class="edge" d="M520 76V130"/>
+  <path class="edge" d="M520 190V250"/>
+
+  <path class="bus" d="M60 250H980"/>
+  <text class="z" x="62" y="240">LAN · 192.168.50.0/24</text>
+  <path class="edge" d="M185 250V290" marker-end="url(#a-net)"/><path class="edge" d="M450 250V290" marker-end="url(#a-net)"/>
+  <path class="edge" d="M685 250V290" marker-end="url(#a-net)"/><path class="edge" d="M895 250V290" marker-end="url(#a-net)"/>
+
+  <rect class="node k-app" x="60" y="290" width="250" height="100" rx="8"/>
+  <text class="t" x="76" y="312">speedracer</text><text class="s" x="76" y="330">Ubuntu 24.04 · the homelab server</text>
+  <text class="m" x="76" y="348">enp69s0   192.168.50.100</text><text class="m" x="76" y="363">tailscale0 100.74.60.51</text><text class="m" x="76" y="378">enp72s0 · Wi-Fi: down</text>
+  <rect class="node k-data" x="350" y="290" width="200" height="100" rx="8"/>
+  <text class="t" x="366" y="312">NAS</text><text class="s" x="366" y="330">backup target · 11 TB</text>
+  <text class="m" x="366" y="348">192.168.50.101</text><text class="m" x="366" y="363">SMB ServerBackup</text>
+  <path class="edge" d="M310 340H350" marker-end="url(#a-net)"/><text class="m tc" x="330" y="332">SMB</text>
+  <rect class="node k-ts" x="590" y="290" width="190" height="100" rx="8"/>
+  <text class="t" x="606" y="312">Ian's MacBook</text><text class="s" x="606" y="330">tailnet 100.126.61.33</text>
+  <text class="m" x="606" y="348">LAN 192.168.50.122</text><text class="m" x="606" y="363">direct tailnet path</text>
+  <rect class="node k-ext" x="810" y="290" width="170" height="100" rx="8"/>
+  <text class="t" x="824" y="312">Phones · IoT</text><text class="s" x="824" y="330">Wi-Fi clients</text>
+  <text class="m" x="824" y="348">Sonos · Cast · HomeKit</text><text class="m" x="824" y="363">found by HA (mDNS)</text>
+
+  <rect class="node zone-ts k-ts" x="60" y="450" width="920" height="52" rx="26" style="stroke-dasharray:6 5"/>
+  <text class="t tc" x="520" y="472">Tailnet · terrier-haddock.ts.net</text>
+  <text class="s tc" x="520" y="490">WireGuard overlay: direct on the LAN, hole-punched or relayed (DERP) everywhere else</text>
+  <path class="edge-ts" d="M185 390V450"/><path class="edge-ts" d="M685 390V450"/><path class="edge-ts" d="M895 390V450"/>
+</svg>
+  </div>
+  <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Only the server, the laptop and the phone are on the tailnet; the NAS and the smart-home devices are reachable on the LAN only. UFW also opens :1400 from the LAN for Sonos.</p>
+  </div>
+</section>
+
+<!-- ===================== TAILSCALE ACCESS ===================== -->
+<section id="tailscale">
+  <h2>Tailscale access <small>how the laptop and the phone reach the server</small></h2>
+  <div class="card">
+  <div class="diagram">
+<svg viewBox="0 0 1200 560" role="img" aria-label="Tailscale access: MacBook and iPhone join the tailnet, reach speedracer's tailscale0, pass UFW, and are served by nginx with TLS">
+  <defs>
+    <marker id="a-ts" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah-ts"/></marker>
+    <marker id="a-ts2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+  <rect class="node k-ts" x="30" y="110" width="230" height="130" rx="8"/>
+  <text class="t" x="46" y="134">Ian's MacBook</text><text class="s" x="46" y="154">100.126.61.33 · macOS</text>
+  <text class="s" x="46" y="172">Browser · SSH · Syncthing</text><text class="s" x="46" y="190">Home: direct LAN path</text><text class="s" x="46" y="208">Away: NAT traversal / DERP relay</text>
+  <rect class="node k-ts" x="30" y="330" width="230" height="130" rx="8"/>
+  <text class="t" x="46" y="354">iPhone</text><text class="s" x="46" y="374">100.80.99.30 · Tailscale iOS app</text>
+  <text class="s" x="46" y="392">Safari · Home Assistant app</text><text class="s" x="46" y="410">Cellular or Wi-Fi, anywhere</text><text class="s" x="46" y="428">Last seen 79 days ago (snapshot)</text>
+
+  <rect class="node k-ts" x="310" y="90" width="170" height="400" rx="24" style="stroke-dasharray:6 5"/>
+  <text class="t tc" x="395" y="270">Tailnet</text>
+  <text class="s tc" x="395" y="290">terrier-haddock.ts.net</text>
+  <text class="s tc" x="395" y="318">WireGuard mesh</text>
+  <text class="s tc" x="395" y="336">MagicDNS names</text>
+  <text class="s tc" x="395" y="354">one login, private by default</text>
+  <path class="edge-ts" d="M260 175H310" marker-end="url(#a-ts)"/>
+  <path class="edge-ts" d="M260 395H310" marker-end="url(#a-ts)"/>
+  <path class="edge-ts" d="M480 175H590" marker-end="url(#a-ts)"/>
+  <text class="m tc" x="535" y="167">WireGuard</text>
+
+  <rect class="zone zone-host" x="570" y="60" width="610" height="480" rx="14"/>
+  <text class="z te" x="1166" y="80">speedracer · 100.74.60.51</text>
+  <rect class="node k-ts" x="590" y="140" width="150" height="70" rx="8"/>
+  <text class="t" x="604" y="164">tailscale0</text><text class="s" x="604" y="182">tailnet interface</text><text class="m" x="604" y="198">100.74.60.51</text>
+  <rect class="node k-net" x="775" y="140" width="150" height="70" rx="8"/>
+  <text class="t" x="789" y="164">UFW</text><text class="s" x="789" y="182">allow per port on</text><text class="m" x="789" y="198">tailscale0 only</text>
+  <path class="edge" d="M740 175H775" marker-end="url(#a-ts2)"/>
+  <path class="edge" d="M925 175H975" marker-end="url(#a-ts2)"/>
+
+  <rect class="node k-sys" x="590" y="270" width="335" height="70" rx="8"/>
+  <text class="t" x="604" y="294">Direct, non-HTTP</text><text class="s" x="604" y="312">sshd :22 · Syncthing :22000</text><text class="m" x="604" y="328">bypass nginx; UFW still gates by interface</text>
+  <path class="edge" d="M850 210V270" marker-end="url(#a-ts2)"/>
+  <rect class="node k-net" x="590" y="370" width="335" height="70" rx="8"/>
+  <text class="t" x="604" y="394">TLS certificate</text><text class="s" x="604" y="412">tailscale cert → /etc/ssl/tailscale</text><text class="m" x="604" y="428">renewed weekly (cron, Sun 03:00)</text>
+  <path class="edge" d="M925 405H975" marker-end="url(#a-ts2)"/>
+
+  <rect class="node k-net" x="975" y="100" width="195" height="370" rx="8"/>
+  <text class="t" x="989" y="124">nginx</text><text class="s" x="989" y="141">TLS on :443 and service ports</text>
+  <path class="edge" d="M975 150H1170" style="stroke-width:1"/>
+  <text class="t" x="989" y="172" style="font-size:12px">:443  Index + overview</text><text class="s" x="989" y="188">static files</text>
+  <text class="t" x="989" y="224" style="font-size:12px">:{{ homeassistant_nginx_port }}  Home Assistant</text><text class="s" x="989" y="240">→ 127.0.0.1:{{ homeassistant_port }} (host net)</text>
+  <text class="t" x="989" y="276" style="font-size:12px">:{{ vllm_nginx_port }}  LLM API</text><text class="s" x="989" y="292">→ 127.0.0.1:{{ vllm_port }} → sglang</text>
+  <text class="t" x="989" y="328" style="font-size:12px">:{{ minio_console_nginx_port }}  MinIO console</text><text class="s" x="989" y="344">→ 127.0.0.1:{{ minio_console_port }}</text>
+  <text class="t" x="989" y="380" style="font-size:12px">:{{ yugabytedb_ui_nginx_port }}  YugabyteDB UI</text><text class="s" x="989" y="396">→ 127.0.0.1:{{ yugabytedb_ui_port }}</text>
+  <text class="t" x="989" y="432" style="font-size:12px">:{{ arcana2_nginx_port }}  Arcana 2 console</text><text class="s" x="989" y="448">→ 127.0.0.1:{{ arcana2_port }}</text>
+</svg>
+  </div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>From the laptop</h3>
+      <ol class="steps">
+        <li>Tailscale running on the MacBook, signed in to the same tailnet.</li>
+        <li>Open <a href="https://{{ tailscale_hostname }}/">https://{{ tailscale_hostname }}/</a> for the index, or a service port from the table above.</li>
+        <li>Shell: <code>ssh {{ tailscale_hostname }}</code>. Vault sync runs through Syncthing on :22000.</li>
+        <li>At home Tailscale prefers the direct LAN path; away it hole-punches or relays.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>From the phone</h3>
+      <ol class="steps">
+        <li>Tailscale iOS app connected (the VPN toggle on).</li>
+        <li>Open the same <code>https://{{ tailscale_hostname }}/</code> URL in Safari. The certificate is valid, so no warnings.</li>
+        <li>Home Assistant: <code>https://{{ tailscale_hostname }}:{{ homeassistant_nginx_port }}</code>, also usable from the HA app as the server URL.</li>
+        <li>The snapshot shows the phone offline for 79 days; reconnect it before relying on this path.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== HIERARCHY ===================== -->
+<section id="hierarchy">
+  <h2>System hierarchy <small>host → network → containers → data</small></h2>
+  <div class="card">
+  <ul class="tree">
+    <li><details open><summary><strong>speedracer</strong> <span class="tag">Ubuntu 24.04</span></summary>
+      <ul>
+        <li><details><summary>Hardware <span class="tag">Threadripper 3960X · 125 GiB · 2× RTX 3090</span></summary>
+          <ul><li>root LVM 914 GB</li><li>md0 RAID 5 (4×4 TB) → /mnt/data</li><li>NAS CIFS → /mnt/nas</li></ul></details></li>
+        <li><details open><summary>Ingress <span class="tag">tailscale0 → UFW → nginx</span></summary>
+          <ul>
+            <li>:443 static index + overview <span class="tag">/var/www/tailscale-index</span></li>
+            <li>:{{ homeassistant_nginx_port }} → Home Assistant · :{{ vllm_nginx_port }} → LLM API · :{{ minio_console_nginx_port }} → MinIO · :{{ yugabytedb_ui_nginx_port }} → YugabyteDB UI · :{{ arcana2_nginx_port }} → Arcana 2</li>
+          </ul></details></li>
+        <li><details open><summary>Docker <span class="tag">homelab-net</span></summary>
+          <ul>
+            <li>homeassistant <span class="tag">host network</span></li>
+            <li><details><summary>Local LLM <span class="tag">GPU</span></summary><ul><li>sglang-watcher <span class="tag">127.0.0.1:{{ vllm_port }}</span></li><li>sglang <span class="tag">Qwen3.6-35B-A3B-AWQ · on demand</span></li></ul></details></li>
+            <li>minio <span class="tag">S3</span></li>
+            <li><details open><summary>yugabytedb <span class="tag">YSQL :5433</span></summary>
+              <ul><li><span class="mono">arcana_dev</span> (+ per-worktree <span class="mono">arcana_test_*</span>)</li><li>legacy databases kept untouched</li></ul></details></li>
+            <li><details open id="arcana-tree"><summary><strong>Arcana 2</strong> <span class="tag">~/projects/arcana2</span></summary>
+              <ul>
+                <li>arcana-dev <span class="tag">:4100</span> · arcana-dev-2 <span class="tag">:4101</span></li>
+                <li>admin console <span class="tag">nginx :{{ arcana2_nginx_port }}</span></li>
+{% if arcana_hierarchy | length > 0 %}
+{{ arcana_hierarchy }}
+{% else %}
+                <li class="muted">internal structure: not yet provided (<code>overview-hierarchy.html</code>)</li>
+{% endif %}
+              </ul></details></li>
+          </ul></details></li>
+        <li><details><summary>Host services <span class="tag">systemd · cron</span></summary>
+          <ul><li>nginx · tailscaled · docker · sshd · postfix</li><li>syncthing → /opt/vaults/obsidian</li><li>smartd · mdmonitor · nvidia-persistenced</li><li>restic 03:00 · Claude health check 08:00 · cert renewal Sun 03:00</li></ul></details></li>
+      </ul></details></li>
+  </ul>
+  </div>
+</section>
+
+<!-- ===================== ARCANA ===================== -->
+<section id="arcana">
+  <h2>Arcana 2 <small>runtime wiring (homelab) and internals (from the arcana2 repo)</small></h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Runtime wiring <span class="muted" style="font-weight:400">(owned by the homelab)</span></h3>
+      <dl class="kv">
+        <dt>Source</dt><dd class="mono">{{ arcana2_src_path }} (bind-mounted at /workspace)</dd>
+        <dt>Containers</dt><dd class="mono">arcana-dev :4100, arcana-dev-2 :4101</dd>
+        <dt>Console</dt><dd><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}</a></dd>
+        <dt>Database</dt><dd><span class="mono">arcana_dev</span> on YugabyteDB (homelab-net)</dd>
+        <dt>LLM</dt><dd>Anthropic API (key in a root-only env file)</dd>
+        <dt>Live reload</dt><dd>host edits recompile into the running node in a few seconds</dd>
+        <dt>Playbook</dt><dd class="mono">playbooks/arcana2.yml</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>Add Arcana's own details here</h3>
+      <p class="muted" style="font-size:0.85rem">The Arcana session writes up to three HTML fragments in the arcana2 repo and the homelab publishes them into this page: summary tiles, hierarchy items, and detail cards or diagrams.</p>
+      <dl class="kv">
+        <dt>Files</dt><dd class="mono">{{ arcana_overview_dir }}/</dd>
+        <dt>Slots</dt><dd><span class="mono">overview-summary.html</span> · <span class="mono">overview-hierarchy.html</span> · <span class="mono">overview-details.html</span></dd>
+        <dt>Publish</dt><dd class="mono">ansible-playbook playbooks/nginx.yml --tags overview</dd>
+      </dl>
+      <p style="margin:0.7rem 0 0"><a href="/arcana-overview-contract.txt">Instructions for the Arcana process →</a></p>
+    </div>
+  </div>
+{% if arcana_details | length > 0 %}
+{{ arcana_details }}
+{% else %}
+  <div class="ph">No Arcana-provided details yet. Point the arcana2 session at <code>~/homelab/docs/arcana-overview-contract.md</code> (also at <a href="/arcana-overview-contract.txt">/arcana-overview-contract.txt</a>) and have it create the fragments listed above.</div>
+{% endif %}
+</section>
+
+<!-- ===================== OPERATIONS ===================== -->
+<section id="ops">
+  <h2>Operations <small>backup, monitoring and change control</small></h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Backup</h3>
+      <dl class="kv">
+        <dt>Tool</dt><dd>restic, nightly at 03:00</dd>
+        <dt>Repository</dt><dd class="mono">/mnt/nas/backups/homelab</dd>
+        <dt>Paths</dt><dd class="mono">/home /etc /opt/compose /opt/vaults /opt/cache /var/lib/docker/volumes</dd>
+        <dt>Offsite</dt><dd>the NAS syncs to S3 independently</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>Monitoring</h3>
+      <dl class="kv">
+        <dt>Health check</dt><dd>Claude headless run at 08:00 → <span class="mono">health-reports/</span> (disk, memory, containers, restic age, failed units, security updates, temperatures)</dd>
+        <dt>Mail</dt><dd>alerts and cron output relay through postfix to Gmail</dd>
+        <dt>Disks</dt><dd>smartd and mdmonitor</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>Change control</h3>
+      <dl class="kv">
+        <dt>Rule</dt><dd>every system change goes through an Ansible playbook, dry run first</dd>
+        <dt>Record</dt><dd>commit to GitHub + <span class="mono">runbooks/YYYY-MM-DD-task.md</span></dd>
+        <dt>Containers</dt><dd>compose templates in <span class="mono">templates/</span> deployed to <span class="mono">/opt/compose/&lt;service&gt;/</span></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<footer>Generated by playbooks/nginx.yml (<code>--tags overview</code>) from templates/homelab-overview.html.j2 — edit those, not this file. This is a configuration view as of {{ overview_snapshot_date }}; counts, disk usage and tailnet device status are snapshots, not live data.</footer>
+</main>
+</body>
+</html>

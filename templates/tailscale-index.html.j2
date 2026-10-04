@@ -33,6 +33,18 @@
     margin: 0 0 2rem;
     font-size: 0.9rem;
   }
+  a.hero {
+    display: block;
+    border: 1px solid var(--accent);
+    background: var(--card);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 1.25rem;
+    text-decoration: none;
+    color: var(--text);
+  }
+  a.hero:hover { background: var(--border); }
+  a.hero strong { color: var(--accent); }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
   li {
     border: 1px solid var(--border);
@@ -69,6 +81,10 @@
 <main>
   <h1>{{ tailscale_hostname }}</h1>
   <p class="sub">Services reachable over Tailscale</p>
+  <a class="hero" href="/overview.html">
+    <strong>Homelab overview →</strong>
+    <div class="desc">Server summary, configuration and network diagrams, Tailscale access, Arcana</div>
+  </a>
   <ul>
 {% for svc in tailscale_services %}
     <li>

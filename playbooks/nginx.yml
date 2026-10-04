@@ -21,6 +21,12 @@
     yugabytedb_enabled: true    # keep in sync with playbooks/docker.yml
 
     index_web_root: /var/www/tailscale-index
+
+    # Overview dashboard (templates/homelab-overview.html.j2). Arcana's own details
+    # come from fragment files in its repo; see docs/arcana-overview-contract.md.
+    arcana2_src_path: /home/eslick/projects/arcana2
+    arcana_overview_dir: "{{ arcana2_src_path }}/docs/homelab"
+    overview_snapshot_date: "2026-10-04"
     tailscale_services:
       - name: Home Assistant
         port: "{{ homeassistant_nginx_port }}"
@@ -215,6 +221,22 @@
         mode: '0644'
       become: yes
       tags: [configure, index]
+
+    - name: Deploy homelab overview dashboard page
+      ansible.builtin.template:
+        src: ../templates/homelab-overview.html.j2
+        dest: "{{ index_web_root }}/overview.html"
+        mode: '0644'
+      become: yes
+      tags: [configure, index, overview]
+
+    - name: Publish the Arcana overview contribution instructions
+      ansible.builtin.copy:
+        src: ../docs/arcana-overview-contract.md
+        dest: "{{ index_web_root }}/arcana-overview-contract.txt"
+        mode: '0644'
+      become: yes
+      tags: [configure, index, overview]
 
     - name: Deploy nginx site config for Tailscale services index
       ansible.builtin.template:
