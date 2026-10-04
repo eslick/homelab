@@ -11,7 +11,7 @@ services:
       - /home/eslick/projects/homedev/dev:/app/dev
       - /home/eslick/projects/homedev/resources:/app/resources
     environment:
-      CRDB_URL: "jdbc:postgresql://localhost:26257/homedev?sslmode=disable"
+      CRDB_URL: "jdbc:postgresql://localhost:5433/homedev?user=yugabyte&sslmode=disable"  # name kept for the homedev code; now points at YugabyteDB
       MINIO_ENDPOINT: "http://localhost:9000"
       MINIO_ACCESS_KEY: "{{ vault_minio_root_user }}"
       MINIO_SECRET_KEY: "{{ vault_minio_root_password }}"

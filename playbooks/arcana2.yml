@@ -22,8 +22,9 @@
     arcana2_port: 4100
     arcana2_cookie: arcana-dev
     arcana2_db: arcana_dev
-    # Insecure single-node CockroachDB on the shared docker network (dev, Tailscale-only host)
-    arcana2_database_url: "postgres://root@cockroachdb:26257/{{ arcana2_db }}?sslmode=disable"
+    # YugabyteDB YSQL on the shared docker network (the backend arcana2's docs/tests target).
+    # Auth is disabled on this loopback-published dev instance; credentials are placeholders.
+    arcana2_database_url: "postgres://yugabyte:yugabyte@yugabytedb:5433/{{ arcana2_db }}"
     anthropic_api_key: "{{ vault_anthropic_api_key }}"
     arcana2_rebuild: false
 
@@ -65,21 +66,21 @@
       become: yes
       tags: [docker, configure]
 
-    - name: Check whether the arcana_dev database exists in CockroachDB
+    - name: List YugabyteDB databases
       ansible.builtin.command: >
-        docker exec cockroachdb cockroach sql --insecure --format=csv
-        -e "SELECT count(*) FROM [SHOW DATABASES] WHERE database_name = '{{ arcana2_db }}'"
-      register: arcana2_db_check
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -tAc "SELECT datname FROM pg_database"
+      register: arcana2_dbs
       changed_when: false
       check_mode: no
       become: yes
       tags: [docker]
 
-    - name: Create the arcana_dev database in CockroachDB
+    - name: Create the arcana_dev database in YugabyteDB
       ansible.builtin.command: >
-        docker exec cockroachdb cockroach sql --insecure
-        -e "CREATE DATABASE {{ arcana2_db }}"
-      when: arcana2_db_check.stdout_lines | last | trim == '0'
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -c "CREATE DATABASE {{ arcana2_db }}"
+      when: arcana2_db not in arcana2_dbs.stdout_lines
       become: yes
       tags: [docker]
 
