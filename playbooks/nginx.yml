@@ -14,6 +14,8 @@
     homeassistant_port: 8123
     homeassistant_nginx_port: 8124
 
+    minio_api_port: 9000          # 127.0.0.1-bound S3 API
+    minio_api_nginx_port: 9000    # tailnet TLS port (different IP than the loopback bind, same number)
     minio_console_port: 9001
     minio_console_nginx_port: 9002
     yugabytedb_ui_port: 7000
@@ -189,6 +191,25 @@
       when: not ansible_check_mode
       tags: [configure, minio]
 
+    - name: Deploy nginx site config for MinIO S3 API
+      ansible.builtin.template:
+        src: ../templates/minio-api-nginx.conf.j2
+        dest: /etc/nginx/sites-available/minio-api
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, minio]
+
+    - name: Enable nginx site for MinIO S3 API
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/minio-api
+        dest: /etc/nginx/sites-enabled/minio-api
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, minio]
+
     - name: Deploy nginx site config for YugabyteDB admin UI
       ansible.builtin.template:
         src: ../templates/yugabytedb-nginx.conf.j2
@@ -347,6 +368,7 @@
         - '{{ vllm_nginx_port }}'
         - '{{ homeassistant_nginx_port }}'
         - '{{ minio_console_nginx_port }}'
+        - '{{ minio_api_nginx_port }}'
       become: yes
       tags: [security, homeassistant, minio, yugabytedb]
 

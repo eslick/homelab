@@ -10,7 +10,7 @@ services:
     volumes:
       - minio-data:/data
     ports:
-      - "{{ minio_api_port }}:9000"
+      - "127.0.0.1:{{ minio_api_port }}:9000"  # S3 API; nginx serves it on the tailnet (playbooks/nginx.yml)
       - "127.0.0.1:{{ minio_console_port }}:9001"  # nginx handles external access; see playbooks/nginx.yml
     env_file:
       - {{ secrets_path }}/minio.env   # root-only; holds MINIO_ROOT_USER / MINIO_ROOT_PASSWORD

@@ -16,7 +16,7 @@
 
     services:
       - name: minio
-        ports: [9000]  # console port 9001 is 127.0.0.1-bound; nginx handles external access
+        ports: []  # API :9000 and console :9001 are 127.0.0.1-bound; nginx handles tailnet access
       - name: yugabytedb
         ports: []  # YSQL :5433 and UI :7000 are 127.0.0.1-bound (containers use homelab-net); nginx handles UI access
 
@@ -24,7 +24,7 @@
     # (not in the `services[].ports` blanket-UFW-allow above) and instead
     # get scoped UFW rules below + an nginx TLS vhost (playbooks/nginx.yml).
     admin_console_ports: >-
-      {{ [minio_console_port]
+      {{ [minio_api_port, minio_console_port]
          + ([yugabytedb_ui_port] if yugabytedb_enabled | bool else []) }}
 
     # Obsidian vault (synced via Syncthing — no secrets here)
@@ -104,7 +104,7 @@
         delete: yes
       loop: "{{ admin_console_ports }}"
       become: yes
-      tags: [docker, security]
+      tags: [docker, security, minio]
 
     - name: Allow admin console ports from localhost only (nginx proxies from here)
       community.general.ufw:
@@ -114,7 +114,7 @@
         src: 127.0.0.1
       loop: "{{ admin_console_ports }}"
       become: yes
-      tags: [docker, security]
+      tags: [docker, security, minio]
 
     # YSQL (auth disabled) is loopback-only; never open it in the firewall.
     - name: Ensure no UFW allow for the YugabyteDB YSQL port

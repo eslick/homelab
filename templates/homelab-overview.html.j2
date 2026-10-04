@@ -155,7 +155,7 @@
   <text class="t" x="282" y="446">sglang</text><text class="s" x="282" y="463">Qwen3.6-35B-A3B-AWQ</text><text class="m" x="282" y="480">TP=2 · starts on demand</text>
 
   <rect class="node k-data" x="496" y="326" width="208" height="70" rx="8"/>
-  <text class="t" x="510" y="348">minio</text><text class="s" x="510" y="365">S3 storage · built from source</text><text class="m" x="510" y="382">API :9000 · UI :9001</text>
+  <text class="t" x="510" y="348">minio</text><text class="s" x="510" y="365">S3 storage · built from source</text><text class="m" x="510" y="382">127.0.0.1 API :9000 · UI :9001</text>
 
   <rect class="node k-data" x="724" y="326" width="208" height="70" rx="8"/>
   <text class="t" x="738" y="348">yugabytedb</text><text class="s" x="738" y="365">the SQL database (YSQL)</text><text class="m" x="738" y="382">127.0.0.1:5433 · UI :7000</text>
@@ -330,7 +330,7 @@
     <tr><th>Service</th><th>Container(s)</th><th>Version / image</th><th>Bind</th><th>nginx (tailnet TLS)</th><th>State</th><th>Playbook</th></tr>
     <tr><td>Home Assistant</td><td class="mono">homeassistant</td><td>ghcr.io/home-assistant/home-assistant:stable</td><td>host network :{{ homeassistant_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ homeassistant_nginx_port }}">:{{ homeassistant_nginx_port }}</a></td><td class="mono">/opt/compose/homeassistant/config</td><td class="mono">homeassistant.yml</td></tr>
     <tr><td>Local LLM API</td><td class="mono">sglang-watcher, sglang</td><td>sglang-base:working · Qwen3.6-35B-A3B-AWQ</td><td>127.0.0.1:{{ vllm_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ vllm_nginx_port }}">:{{ vllm_nginx_port }}</a></td><td class="mono">vllm-models volume (HF cache)</td><td class="mono">sglang.yml <span class="muted">(vllm.yml = alternative)</span></td></tr>
-    <tr><td>MinIO</td><td class="mono">minio</td><td>RELEASE.2025-10-15 (built from source)</td><td>API 0.0.0.0:9000 · console 127.0.0.1:{{ minio_console_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ minio_console_nginx_port }}">:{{ minio_console_nginx_port }}</a></td><td class="mono">Docker volume</td><td class="mono">docker.yml</td></tr>
+    <tr><td>MinIO</td><td class="mono">minio</td><td>RELEASE.2025-10-15 (built from source)</td><td>API 127.0.0.1:{{ minio_api_port }} · console 127.0.0.1:{{ minio_console_port }}</td><td>console <a href="https://{{ tailscale_hostname }}:{{ minio_console_nginx_port }}">:{{ minio_console_nginx_port }}</a> · S3 API :{{ minio_api_nginx_port }}</td><td class="mono">Docker volume</td><td class="mono">docker.yml</td></tr>
     <tr><td>YugabyteDB</td><td class="mono">yugabytedb</td><td>2025.2.6.0-b111</td><td>127.0.0.1:5433 · UI 127.0.0.1:{{ yugabytedb_ui_port }}</td><td><a href="https://{{ tailscale_hostname }}:{{ yugabytedb_ui_nginx_port }}">:{{ yugabytedb_ui_nginx_port }}</a></td><td class="mono">yugabyte-data volume</td><td class="mono">docker.yml</td></tr>
     <tr><td>Arcana 2</td><td class="mono">arcana-dev, arcana-dev-2</td><td>arcana-dev:local (Elixir)</td><td>127.0.0.1:{{ arcana2_port }}/4101 + tailnet IP</td><td><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></td><td class="mono">~/projects/arcana2 (bind mount)</td><td class="mono">arcana2.yml</td></tr>
     <tr><td>Static index + overview</td><td class="mono">— (nginx)</td><td>nginx 1.24</td><td>tailnet IP :80 → :443</td><td><a href="/">:443</a></td><td class="mono">/var/www/tailscale-index</td><td class="mono">nginx.yml</td></tr>

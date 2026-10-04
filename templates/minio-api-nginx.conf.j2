@@ -1,0 +1,31 @@
+# MinIO S3 API on the tailnet. Container binds 127.0.0.1:{{ minio_api_port }}; this vhost adds TLS.
+# Settings follow MinIO's reverse-proxy guidance: no buffering, no body limit, Host kept with its
+# port (S3 SigV4 signs the Host header, so it must match what the client used).
+server {
+    listen {{ tailscale_ip }}:{{ minio_api_nginx_port }} ssl;
+    server_name {{ tailscale_hostname }};
+
+    ssl_certificate {{ cert_dir }}/speedracer.crt;
+    ssl_certificate_key {{ cert_dir }}/speedracer.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
+    ignore_invalid_headers off;
+    client_max_body_size 0;
+    proxy_buffering off;
+    proxy_request_buffering off;
+
+    location / {
+        proxy_pass http://127.0.0.1:{{ minio_api_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        chunked_transfer_encoding off;
+        proxy_connect_timeout 300;
+        proxy_read_timeout 300;
+        proxy_send_timeout 300;
+    }
+}
