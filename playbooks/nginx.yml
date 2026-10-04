@@ -20,7 +20,7 @@
     minio_console_nginx_port: 9002
     yugabytedb_ui_port: 7000
     yugabytedb_ui_nginx_port: 7001
-    yugabytedb_enabled: false   # keep in sync with playbooks/docker.yml
+    yugabytedb_enabled: true    # keep in sync with playbooks/docker.yml
 
     index_web_root: /var/www/tailscale-index
     tailscale_services:

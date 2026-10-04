@@ -1,0 +1,95 @@
+---
+# Uninstall CockroachDB (consolidated onto YugabyteDB; see
+# runbooks/2026-10-03-consolidate-on-yugabytedb.md).
+#
+# Nothing of value lived in it: Datomic held only transactor coordination rows
+# (Datomic state was deliberately discarded), and the homedev / arcana_dev
+# databases were empty. The volume remains recoverable from restic snapshots
+# (/var/lib/docker/volumes is in the backup set) until they age out.
+#
+# Everything is tagged `never`; run explicitly:
+#   ansible-playbook playbooks/retire-cockroachdb.yml --check --diff --tags remove
+#   ansible-playbook playbooks/retire-cockroachdb.yml --tags remove
+
+- name: Remove CockroachDB
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_dir: /opt/compose/cockroachdb
+    crdb_sql_port: 26257
+    crdb_ui_port: 8090
+    crdb_ui_nginx_port: 8091
+
+  tasks:
+    - name: Check for an existing CockroachDB container
+      ansible.builtin.command: docker ps -a --filter name=^cockroachdb$ --format '{% raw %}{{.Names}}{% endraw %}'
+      register: crdb_container
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [remove, never]
+
+    - name: Stop and remove the CockroachDB container
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        state: absent
+      when: crdb_container.stdout | trim != ''
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the CockroachDB data volume
+      community.docker.docker_volume:
+        name: cockroachdb_cockroach-data
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove CockroachDB images
+      community.docker.docker_image:
+        name: "cockroachdb/cockroach:{{ item }}"
+        state: absent
+      loop: [latest, v26.1.1, v26.2.7]
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the CockroachDB compose directory
+      ansible.builtin.file:
+        path: "{{ compose_dir }}"
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the CockroachDB admin UI nginx site
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx/sites-enabled/cockroachdb
+        - /etc/nginx/sites-available/cockroachdb
+      become: yes
+      notify: Reload nginx
+      tags: [remove, never]
+
+    - name: Remove CockroachDB firewall rules
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: tcp
+        src: "{{ item.src | default(omit) }}"
+        interface: "{{ item.interface | default(omit) }}"
+        direction: "{{ item.direction | default(omit) }}"
+        delete: yes
+      loop:
+        - { port: "{{ crdb_sql_port }}" }
+        - { port: "{{ crdb_ui_port }}", src: 127.0.0.1 }
+        - { port: "{{ crdb_ui_nginx_port }}", interface: tailscale0, direction: in }
+      become: yes
+      tags: [remove, never]
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+      become: yes

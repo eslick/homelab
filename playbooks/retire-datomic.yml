@@ -1,0 +1,85 @@
+---
+# Uninstall the Datomic transactor (decision: keep things simple and stay with
+# the data models in Arcana; see runbooks/2026-10-03-consolidate-on-yugabytedb.md).
+#
+# Datomic state was deliberately discarded. The only data was a throwaway test
+# database plus transactor coordination rows. The volume and the `datomic`
+# database in YugabyteDB are removed; older copies remain in restic snapshots.
+#
+# Everything is tagged `never`; run explicitly:
+#   ansible-playbook playbooks/retire-datomic.yml --check --diff --tags remove
+#   ansible-playbook playbooks/retire-datomic.yml --tags remove
+
+- name: Remove Datomic
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_dir: /opt/compose/datomic
+    datomic_port: 4334
+
+  tasks:
+    - name: Check for an existing Datomic container
+      ansible.builtin.command: docker ps -a --filter name=^datomic-transactor$ --format '{% raw %}{{.Names}}{% endraw %}'
+      register: datomic_container
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [remove, never]
+
+    - name: Stop and remove the Datomic transactor
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        state: absent
+      when: datomic_container.stdout | trim != ''
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the Datomic data volume
+      community.docker.docker_volume:
+        name: datomic_datomic-data
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the Datomic image
+      community.docker.docker_image:
+        name: datomic-transactor
+        tag: latest
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the Datomic compose directory
+      ansible.builtin.file:
+        path: "{{ compose_dir }}"
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the Datomic firewall rule
+      community.general.ufw:
+        rule: allow
+        port: "{{ datomic_port }}"
+        proto: tcp
+        delete: yes
+      become: yes
+      tags: [remove, never]
+
+    - name: List YugabyteDB databases
+      ansible.builtin.command: >
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -tAc "SELECT datname FROM pg_database"
+      register: yb_dbs
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [remove, never]
+
+    - name: Drop the datomic database in YugabyteDB
+      ansible.builtin.command: >
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -c "DROP DATABASE datomic"
+      when: "'datomic' in yb_dbs.stdout_lines"
+      become: yes
+      tags: [remove, never]

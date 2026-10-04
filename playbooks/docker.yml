@@ -15,14 +15,10 @@
     docker_network: homelab-net
 
     services:
-      - name: cockroachdb
-        ports: [26257]  # UI port 8090 is 127.0.0.1-bound; nginx handles external access
       - name: minio
         ports: [9000]  # console port 9001 is 127.0.0.1-bound; nginx handles external access
       - name: yugabytedb
         ports: []  # YSQL :5433 and UI :7000 are 127.0.0.1-bound (containers use homelab-net); nginx handles UI access
-      - name: datomic
-        ports: [4334]
       - name: homedev
         ports: []  # host networking; nREPL :7888 is localhost-only; nginx fronts web UI on :3001
 
@@ -30,7 +26,7 @@
     # (not in the `services[].ports` blanket-UFW-allow above) and instead
     # get scoped UFW rules below + an nginx TLS vhost (playbooks/nginx.yml).
     admin_console_ports: >-
-      {{ [cockroachdb_ui_port, minio_console_port]
+      {{ [minio_console_port]
          + ([yugabytedb_ui_port] if yugabytedb_enabled | bool else []) }}
 
     # Obsidian vault (synced via Syncthing — no secrets here)
@@ -39,13 +35,7 @@
     secrets_path: /opt/secrets
     tailscale_hostname: speedracer.terrier-haddock.ts.net
 
-    # CockroachDB (Datomic backend)
-    cockroachdb_sql_port: 26257
-    cockroachdb_ui_port: 8090
-    # Pinned. Major upgrades: playbooks/cockroachdb-upgrade.yml --tags prepare, bump this, apply, then --tags finalize.
-    cockroachdb_version: "v26.2.7"
-
-    # YugabyteDB (the single SQL database: Datomic, homedev, Arcana 2)
+    # YugabyteDB (the single SQL database: homedev, Arcana 2)
     yugabytedb_ysql_port: 5433
     yugabytedb_ui_port: 7000
     # Pinned to the 2025.2 stable series; `latest` now points at 2026.1.x.
@@ -54,7 +44,7 @@
     # file and template are kept.
     yugabytedb_enabled: true
     # Databases created here (arcana_dev is created by playbooks/arcana2.yml)
-    yugabytedb_databases: [datomic, homedev]
+    yugabytedb_databases: [homedev]
     # Pinned container hostname -- yugabyted's persisted catalog already
     # references this value from its original bootstrap; do not change it
     # (see the comment in templates/yugabytedb-compose.yml.j2).
@@ -68,11 +58,6 @@
     minio_console_port: 9001
     minio_root_user: minioadmin
     minio_root_password: "{{ lookup('env', 'MINIO_ROOT_PASSWORD') | default('changeme', true) }}"
-
-    # Datomic Transactor
-    datomic_port: 4334
-    datomic_version: "1.0.7556"
-    datomic_force_recreate: false
 
   tasks:
     # --- Shared infrastructure ---
@@ -154,53 +139,7 @@
       become: yes
       tags: [docker, security]
 
-    # --- CockroachDB (must start first, Datomic depends on it) ---
-
-    - name: Start CockroachDB
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/cockroachdb"
-        state: present
-      become: yes
-      tags: [docker, service]
-
-    - name: Wait for CockroachDB to accept connections
-      ansible.builtin.command: >
-        docker exec cockroachdb
-        cockroach sql --insecure -e "SELECT 1"
-      register: crdb_ready
-      until: crdb_ready.rc == 0
-      retries: 10
-      delay: 3
-      changed_when: false
-      become: yes
-      tags: [docker]
-
-    - name: Create Datomic database in CockroachDB
-      ansible.builtin.command: >
-        docker exec cockroachdb
-        cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS datomic"
-      register: crdb_create_db
-      changed_when: "'CREATE DATABASE' in crdb_create_db.stdout"
-      become: yes
-      tags: [docker]
-
-    - name: Create datomic_kvs table in CockroachDB
-      ansible.builtin.shell: >
-        docker exec cockroachdb cockroach sql --insecure -d datomic -e "
-        CREATE TABLE IF NOT EXISTS datomic_kvs (
-          id TEXT NOT NULL,
-          rev INTEGER,
-          map TEXT,
-          val BYTES,
-          CONSTRAINT pk_id PRIMARY KEY (id)
-        );
-        GRANT ALL ON TABLE datomic_kvs TO public;"
-      register: crdb_table
-      changed_when: "'CREATE TABLE' in crdb_table.stdout"
-      become: yes
-      tags: [docker]
-
-    # --- YugabyteDB (single SQL database for Datomic, homedev, Arcana 2) ---
+    # --- YugabyteDB (single SQL database for homedev, Arcana 2) ---
 
     # `state: absent` errors when nothing exists to remove, so only reconcile
     # when enabled or when a leftover container is still present.
@@ -257,36 +196,6 @@
       become: yes
       tags: [docker]
 
-    - name: Check for the Datomic storage table in YugabyteDB
-      ansible.builtin.command: >
-        docker exec yugabytedb
-        ysqlsh -h yugabytedb -U yugabyte -d datomic -tAc "SELECT to_regclass('public.datomic_kvs')"
-      register: yugabyte_kvs
-      changed_when: false
-      check_mode: no
-      when: yugabytedb_enabled | bool and not ansible_check_mode and 'datomic' in yugabyte_dbs.stdout_lines
-      become: yes
-      tags: [docker]
-
-    # Same DDL as Datomic's bin/sql/postgres-table.sql (minus OIDS/OWNER).
-    - name: Create datomic_kvs table in YugabyteDB
-      ansible.builtin.command: >
-        docker exec yugabytedb
-        ysqlsh -h yugabytedb -U yugabyte -d datomic -c "
-        CREATE TABLE datomic_kvs (
-          id text NOT NULL,
-          rev integer,
-          map text,
-          val bytea,
-          CONSTRAINT pk_id PRIMARY KEY (id));
-        GRANT ALL ON TABLE datomic_kvs TO PUBLIC;"
-      when: >-
-        yugabytedb_enabled | bool and not ansible_check_mode and
-        'datomic' in yugabyte_dbs.stdout_lines and
-        (yugabyte_kvs.stdout | default('') | trim) == ''
-      become: yes
-      tags: [docker]
-
     # --- MinIO ---
 
     # Keep the last published image (2025-09-07) under a stable local name for
@@ -317,37 +226,6 @@
       become: yes
       tags: [docker, service]
 
-    # --- Datomic Transactor ---
-
-    - name: Deploy Datomic Dockerfile
-      ansible.builtin.template:
-        src: "../templates/datomic-Dockerfile.j2"
-        dest: "{{ compose_base }}/datomic/Dockerfile"
-        mode: '0644'
-      become: yes
-      tags: [docker, configure]
-
-    - name: Deploy Datomic transactor properties
-      ansible.builtin.template:
-        src: "../templates/datomic-transactor.properties.j2"
-        dest: "{{ compose_base }}/datomic/transactor.properties"
-        mode: '0640'
-      register: datomic_props
-      become: yes
-      tags: [docker, configure]
-
-    # transactor.properties is a read-only bind mount, so changing it does not
-    # recreate the container by itself; force a recreate when it changes
-    # (or pass -e datomic_force_recreate=true).
-    - name: Build and start Datomic transactor
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/datomic"
-        state: present
-        build: always
-        recreate: "{{ 'always' if (datomic_props.changed | default(false) or datomic_force_recreate | bool) else 'auto' }}"
-      become: yes
-      tags: [docker, service]
-
     # --- homedev Clojure orchestrator ---
 
     - name: Ensure homedev compose directory exists
@@ -373,15 +251,6 @@
         state: present
       become: yes
       tags: [homedev, service]
-
-    - name: Create homedev database in CockroachDB
-      ansible.builtin.command: >
-        docker exec cockroachdb
-        cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS homedev"
-      register: homedev_db
-      changed_when: "'CREATE DATABASE' in homedev_db.stdout"
-      become: yes
-      tags: [homedev]
 
     - name: Create homedev bucket in MinIO
       ansible.builtin.command: >

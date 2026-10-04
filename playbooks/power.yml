@@ -4,8 +4,8 @@
 # NVMe APST is already enabled (kernel default) — no action needed.
 # CPU c-states are limited to C1/C2 by TRX40 ACPI firmware; deeper sleep
 # would require amd_pstate kernel parameter (risky, not done here).
-# CockroachDB is the dominant CPU idle consumer (~6-7%); see docker.yml
-# for container-level CPU limits if further reduction is needed.
+# (CockroachDB was the dominant CPU idle consumer, ~6-7%; it was retired in favor of
+# YugabyteDB. See docker.yml for container-level CPU limits if further reduction is needed.)
 
 - name: Idle power management
   hosts: homelab
