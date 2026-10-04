@@ -117,7 +117,7 @@
   <rect class="node k-ts" x="40" y="112" width="260" height="52" rx="8"/>
   <text class="t" x="56" y="134">tailscale0</text><text class="s" x="56" y="152">100.74.60.51 · MagicDNS + TLS cert</text>
   <rect class="node k-net" x="340" y="112" width="300" height="52" rx="8"/>
-  <text class="t" x="356" y="134">UFW firewall</text><text class="s" x="356" y="152">default deny · allow per port on tailscale0</text>
+  <text class="t" x="356" y="134">UFW firewall</text><text class="s" x="356" y="152">default deny · tailnet (tailscale0) trusted</text>
   <rect class="node k-sys" x="700" y="112" width="460" height="52" rx="8"/>
   <text class="t" x="716" y="134">Ansible-only change control</text><text class="s" x="716" y="152">playbooks/ + templates/ → GitHub · runbooks/ for every change</text>
   <path class="edge" d="M300 138H340" marker-end="url(#a-cfg)"/>
@@ -221,7 +221,7 @@
     <span><i style="border-color:var(--c-ts)"></i>Tailscale</span>
     <span><i style="border-color:var(--c-ext);border-style:dashed"></i>external</span>
   </div>
-  <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Rule of thumb: nginx is the only thing facing the tailnet and container ports bind to 127.0.0.1. Two exceptions are visible above: Home Assistant runs on the host network (needed for device discovery), and the Arcana dev nodes also bind the tailnet IP directly.</p>
+  <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Rule of thumb: nginx is the only thing facing the tailnet and container ports bind to 127.0.0.1. UFW denies other interfaces by default but trusts the whole tailnet, so the loopback binding (not the firewall) is what keeps a container off the tailnet. Two exceptions are visible above: Home Assistant runs on the host network (needed for device discovery), and the Arcana dev nodes also bind the tailnet IP directly.</p>
   </div>
 </section>
 
@@ -448,12 +448,12 @@
   <rect class="node k-ts" x="590" y="140" width="150" height="70" rx="8"/>
   <text class="t" x="604" y="164">tailscale0</text><text class="s" x="604" y="182">tailnet interface</text><text class="m" x="604" y="198">100.74.60.51</text>
   <rect class="node k-net" x="775" y="140" width="150" height="70" rx="8"/>
-  <text class="t" x="789" y="164">UFW</text><text class="s" x="789" y="182">allow per port on</text><text class="m" x="789" y="198">tailscale0 only</text>
+  <text class="t" x="789" y="164">UFW</text><text class="s" x="789" y="182">default deny; allows</text><text class="m" x="789" y="198">all of tailscale0</text>
   <path class="edge" d="M740 175H775" marker-end="url(#a-ts2)"/>
   <path class="edge" d="M925 175H975" marker-end="url(#a-ts2)"/>
 
   <rect class="node k-sys" x="590" y="270" width="335" height="70" rx="8"/>
-  <text class="t" x="604" y="294">Direct, non-HTTP</text><text class="s" x="604" y="312">sshd :22 · Syncthing :22000</text><text class="m" x="604" y="328">bypass nginx; UFW still gates by interface</text>
+  <text class="t" x="604" y="294">Direct, non-HTTP</text><text class="s" x="604" y="312">sshd :22 · Syncthing :22000</text><text class="m" x="604" y="328">bypass nginx; tailnet is allowed by UFW</text>
   <path class="edge" d="M850 210V270" marker-end="url(#a-ts2)"/>
   <rect class="node k-net" x="590" y="370" width="335" height="70" rx="8"/>
   <text class="t" x="604" y="394">TLS certificate</text><text class="s" x="604" y="412">tailscale cert → /etc/ssl/tailscale</text><text class="m" x="604" y="428">renewed weekly (cron, Sun 03:00)</text>

@@ -220,6 +220,15 @@
       become: yes
       tags: [docker, service, minio]
 
+    # One-off: a throwaway connectivity test pulled this image; it is not part of any stack.
+    - name: Remove stray curlimages/curl test image
+      community.docker.docker_image:
+        name: curlimages/curl
+        tag: latest
+        state: absent
+      become: yes
+      tags: [docker, cleanup, curl-image]
+
     # --- OpenClaw Gateway (removed) ---
 
     - name: Stop and remove openclaw container (keep data volume)

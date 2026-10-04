@@ -208,6 +208,28 @@
       ignore_errors: yes  # interface may not exist until tailscale up is run
       tags: [security, tailscale]
 
+    # Rules left behind by retired services (OpenClaw 18789/2099, Obsidian CouchDB 5984, Ollama 11434).
+    # Nothing listens on these ports any more. Deleting a rule that is absent is a no-op.
+    - name: Remove stale UFW rules for retired services
+      community.general.ufw:
+        rule: "{{ item.rule | default('allow') }}"
+        direction: in
+        port: "{{ item.port }}"
+        proto: tcp
+        interface: "{{ item.interface | default(omit) }}"
+        from_ip: "{{ item.src | default(omit) }}"
+        delete: yes
+      loop:
+        - { port: '2099', interface: tailscale0 }
+        - { port: '18789', interface: tailscale0 }
+        - { port: '5984', interface: tailscale0 }
+        - { port: '5984' }
+        - { port: '11434', src: 127.0.0.1 }
+        - { port: '11434', src: 172.18.0.0/16 }
+        - { port: '11434', rule: deny }
+      become: yes
+      tags: [security, cleanup]
+
     - name: Generate default postfix configuration
       ansible.builtin.copy:
         src: /usr/share/postfix/main.cf.debian

@@ -363,7 +363,6 @@
         port: '{{ item }}'
         proto: tcp
       loop:
-        - '2099'
         - '{{ arcana2_nginx_port }}'
         - '{{ vllm_nginx_port }}'
         - '{{ homeassistant_nginx_port }}'
