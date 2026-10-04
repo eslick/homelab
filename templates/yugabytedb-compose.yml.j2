@@ -17,7 +17,7 @@ services:
     volumes:
       - yugabyte-data:/root/var
     ports:
-      - "{{ yugabytedb_ysql_port }}:5433"
+      - "127.0.0.1:{{ yugabytedb_ysql_port }}:5433"  # loopback only: auth is disabled; containers use homelab-net
       - "127.0.0.1:{{ yugabytedb_ui_port }}:7000"  # nginx handles external access; see playbooks/nginx.yml
     networks:
       - {{ docker_network }}
