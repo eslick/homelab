@@ -235,13 +235,16 @@
       when: not ansible_check_mode
       tags: [configure, index]
 
-    - name: Allow the services index port through UFW on Tailscale interface
+    - name: Allow the services index ports (HTTP redirect + HTTPS) through UFW on Tailscale interface
       community.general.ufw:
         rule: allow
         interface: tailscale0
         direction: in
-        port: '80'
+        port: '{{ item }}'
         proto: tcp
+      loop:
+        - '80'
+        - '443'
       become: yes
       tags: [security, index]
 
@@ -298,17 +301,6 @@
       become: yes
       ignore_errors: "{{ ansible_check_mode }}"
       tags: [service]
-
-    - name: Remove stale UFW rule for port 443 on Tailscale interface
-      community.general.ufw:
-        rule: allow
-        interface: tailscale0
-        direction: in
-        port: '443'
-        proto: tcp
-        delete: yes
-      become: yes
-      tags: [security]
 
     - name: Allow nginx ports through UFW on Tailscale interface
       community.general.ufw:

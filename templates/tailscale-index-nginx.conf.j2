@@ -1,11 +1,23 @@
 # Static landing page listing services reachable over Tailscale.
 # Managed by playbooks/nginx.yml — content comes from templates/tailscale-index.html.j2.
-# Plain HTTP is fine here: Tailscale traffic is already encrypted end-to-end,
-# and this page has no backend/proxy_pass, just static files.
+# Served over HTTPS with the Tailscale cert; plain HTTP just redirects.
+# No backend/proxy_pass, just static files.
 
 server {
     listen {{ tailscale_ip }}:80;
     server_name {{ tailscale_hostname }};
+
+    return 301 https://{{ tailscale_hostname }}$request_uri;
+}
+
+server {
+    listen {{ tailscale_ip }}:443 ssl;
+    server_name {{ tailscale_hostname }};
+
+    ssl_certificate {{ cert_dir }}/speedracer.crt;
+    ssl_certificate_key {{ cert_dir }}/speedracer.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
 
     root {{ index_web_root }};
     index index.html;
