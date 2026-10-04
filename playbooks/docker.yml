@@ -19,8 +19,6 @@
         ports: [9000]  # console port 9001 is 127.0.0.1-bound; nginx handles external access
       - name: yugabytedb
         ports: []  # YSQL :5433 and UI :7000 are 127.0.0.1-bound (containers use homelab-net); nginx handles UI access
-      - name: homedev
-        ports: []  # host networking; nREPL :7888 is localhost-only; nginx fronts web UI on :3001
 
     # Admin console ports that are 127.0.0.1-bound in their compose files
     # (not in the `services[].ports` blanket-UFW-allow above) and instead
@@ -35,7 +33,7 @@
     secrets_path: /opt/secrets
     tailscale_hostname: speedracer.terrier-haddock.ts.net
 
-    # YugabyteDB (the single SQL database: homedev, Arcana 2)
+    # YugabyteDB (the single SQL database; Arcana 2 creates its own arcana_dev)
     yugabytedb_ysql_port: 5433
     yugabytedb_ui_port: 7000
     # Pinned to the 2025.2 stable series; `latest` now points at 2026.1.x.
@@ -43,8 +41,6 @@
     # When false, the container is removed but the yugabyte-data volume, compose
     # file and template are kept.
     yugabytedb_enabled: true
-    # Databases created here (arcana_dev is created by playbooks/arcana2.yml)
-    yugabytedb_databases: [homedev]
     # Pinned container hostname -- yugabyted's persisted catalog already
     # references this value from its original bootstrap; do not change it
     # (see the comment in templates/yugabytedb-compose.yml.j2).
@@ -139,7 +135,7 @@
       become: yes
       tags: [docker, security]
 
-    # --- YugabyteDB (single SQL database for homedev, Arcana 2) ---
+    # --- YugabyteDB (single SQL database; Arcana 2) ---
 
     # `state: absent` errors when nothing exists to remove, so only reconcile
     # when enabled or when a leftover container is still present.
@@ -172,30 +168,6 @@
       become: yes
       tags: [docker]
 
-    - name: List YugabyteDB databases
-      ansible.builtin.command: >
-        docker exec yugabytedb
-        ysqlsh -h yugabytedb -U yugabyte -tAc "SELECT datname FROM pg_database"
-      register: yugabyte_dbs
-      changed_when: false
-      check_mode: no
-      when: yugabytedb_enabled | bool and yugabyte_existing.stdout | trim != ''
-      become: yes
-      tags: [docker]
-
-    - name: Create missing YugabyteDB databases
-      ansible.builtin.command: >
-        docker exec yugabytedb
-        ysqlsh -h yugabytedb -U yugabyte -c "CREATE DATABASE {{ item }}"
-      loop: "{{ yugabytedb_databases }}"
-      register: yugabyte_create_db
-      until: yugabyte_create_db.rc == 0
-      retries: 6
-      delay: 10   # YSQL accepts connections slightly before it can run DDL on a cold start
-      when: yugabytedb_enabled | bool and not ansible_check_mode and item not in yugabyte_dbs.stdout_lines
-      become: yes
-      tags: [docker]
-
     # --- MinIO ---
 
     # Keep the last published image (2025-09-07) under a stable local name for
@@ -225,42 +197,6 @@
         build: always
       become: yes
       tags: [docker, service]
-
-    # --- homedev Clojure orchestrator ---
-
-    - name: Ensure homedev compose directory exists
-      ansible.builtin.file:
-        path: "{{ compose_base }}/homedev"
-        state: directory
-        mode: '0755'
-      become: yes
-      tags: [homedev, configure]
-
-    - name: Deploy homedev compose file from template
-      ansible.builtin.template:
-        src: "../templates/homedev-compose.yml.j2"
-        dest: "{{ compose_base }}/homedev/docker-compose.yml"
-        mode: '0644'
-      become: yes
-      tags: [homedev, configure]
-
-    - name: Build and start homedev
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/homedev"
-        build: always
-        state: present
-      become: yes
-      tags: [homedev, service]
-
-    - name: Create homedev bucket in MinIO
-      ansible.builtin.command: >
-        docker run --rm --network {{ docker_network }} --entrypoint sh minio/mc -c "
-          mc alias set local http://minio:9000 {{ minio_root_user }} {{ minio_root_password }} &&
-          mc mb --ignore-existing local/homedev"
-      register: homedev_bucket
-      changed_when: "'Bucket created' in homedev_bucket.stdout"
-      become: yes
-      tags: [homedev]
 
     # --- OpenClaw Gateway (removed) ---
 

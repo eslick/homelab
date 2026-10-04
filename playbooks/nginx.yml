@@ -13,8 +13,6 @@
     vllm_nginx_port: 8082
     homeassistant_port: 8123
     homeassistant_nginx_port: 8124
-    homedev_port: 3000
-    homedev_nginx_port: 3001
 
     minio_console_port: 9001
     minio_console_nginx_port: 9002
@@ -163,25 +161,6 @@
       notify: Reload nginx
       when: not ansible_check_mode
       tags: [configure, homeassistant]
-
-    - name: Deploy nginx site config for homedev
-      ansible.builtin.template:
-        src: ../templates/homedev-nginx.conf.j2
-        dest: /etc/nginx/sites-available/homedev
-        mode: '0644'
-      become: yes
-      notify: Reload nginx
-      tags: [configure, homedev]
-
-    - name: Enable nginx site for homedev
-      ansible.builtin.file:
-        src: /etc/nginx/sites-available/homedev
-        dest: /etc/nginx/sites-enabled/homedev
-        state: link
-      become: yes
-      notify: Reload nginx
-      when: not ansible_check_mode
-      tags: [configure, homedev]
 
     - name: Deploy nginx site config for MinIO console
       ansible.builtin.template:
@@ -343,7 +322,6 @@
         - '{{ arcana2_nginx_port }}'
         - '{{ vllm_nginx_port }}'
         - '{{ homeassistant_nginx_port }}'
-        - '{{ homedev_nginx_port }}'
         - '{{ minio_console_nginx_port }}'
       become: yes
       tags: [security, homeassistant, minio, yugabytedb]

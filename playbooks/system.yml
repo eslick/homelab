@@ -316,40 +316,6 @@
       become: yes
       tags: [configure, claude]
 
-    - name: Deploy homedev CLI wrapper
-      ansible.builtin.copy:
-        dest: /usr/local/bin/homedev
-        mode: '0755'
-        content: |
-          #!/bin/bash
-          # Model is set by the directory's .claude/settings.json, not pinned here.
-          cd /home/eslick/projects/homedev
-          # Session label (homedev) via --name; extra args after it can override.
-          exec /home/eslick/.local/bin/claude --name homedev --dangerously-skip-permissions "$@"
-      become: yes
-      tags: [configure, claude]
-
-    - name: Ensure homedev .claude directory exists
-      ansible.builtin.file:
-        path: /home/eslick/projects/homedev/.claude
-        state: directory
-        owner: eslick
-        group: eslick
-        mode: '0755'
-      tags: [configure, claude]
-
-    - name: Deploy homedev Claude directory config
-      ansible.builtin.copy:
-        dest: /home/eslick/projects/homedev/.claude/settings.json
-        owner: eslick
-        group: eslick
-        mode: '0644'
-        content: |
-          {
-            "model": "claude-sonnet-5-5"
-          }
-      tags: [configure, claude]
-
     - name: Deploy arcana CLI wrapper (Arcana 2 dev session)
       ansible.builtin.copy:
         dest: /usr/local/bin/arcana

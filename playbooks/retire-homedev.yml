@@ -1,0 +1,122 @@
+---
+# Deprecate homedev (the Clojure orchestrator approach is shelved for now; see
+# runbooks/2026-10-03-retire-homedev.md).
+#
+# Removes everything the homelab ran for it. The source tree
+# (~/projects/homedev, including its .claude/ directory) is deliberately NOT
+# touched so the work can be resumed later. It had no data: the YugabyteDB
+# database had 0 tables and the MinIO bucket was empty. The bucket is only
+# removed if empty (mc rb without --force refuses otherwise).
+#
+# Everything is tagged `never`; run explicitly:
+#   ansible-playbook playbooks/retire-homedev.yml --check --diff --tags remove
+#   ansible-playbook playbooks/retire-homedev.yml --tags remove
+
+- name: Remove homedev
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_dir: /opt/compose/homedev
+    docker_network: homelab-net
+    homedev_nginx_port: 3001
+    minio_root_user: minioadmin
+    minio_root_password: "{{ lookup('env', 'MINIO_ROOT_PASSWORD') | default('changeme', true) }}"
+
+  tasks:
+    - name: Check for an existing homedev container
+      ansible.builtin.command: docker ps -a --filter name=^homedev$ --format '{% raw %}{{.Names}}{% endraw %}'
+      register: homedev_container
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [remove, never]
+
+    - name: Stop and remove the homedev container
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        state: absent
+      when: homedev_container.stdout | trim != ''
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the homedev image
+      community.docker.docker_image:
+        name: homedev
+        tag: local
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the homedev compose directory
+      ansible.builtin.file:
+        path: "{{ compose_dir }}"
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the homedev CLI wrapper
+      ansible.builtin.file:
+        path: /usr/local/bin/homedev
+        state: absent
+      become: yes
+      tags: [remove, never]
+
+    - name: Remove the homedev nginx site
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx/sites-enabled/homedev
+        - /etc/nginx/sites-available/homedev
+      become: yes
+      notify: Reload nginx
+      tags: [remove, never]
+
+    - name: Remove the homedev firewall rule
+      community.general.ufw:
+        rule: allow
+        port: "{{ homedev_nginx_port }}"
+        proto: tcp
+        interface: tailscale0
+        direction: in
+        delete: yes
+      become: yes
+      tags: [remove, never]
+
+    - name: List YugabyteDB databases
+      ansible.builtin.command: >
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -tAc "SELECT datname FROM pg_database"
+      register: yb_dbs
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [remove, never]
+
+    - name: Drop the (empty) homedev database in YugabyteDB
+      ansible.builtin.command: >
+        docker exec yugabytedb
+        ysqlsh -h yugabytedb -U yugabyte -c "DROP DATABASE homedev"
+      when: "'homedev' in yb_dbs.stdout_lines"
+      become: yes
+      tags: [remove, never]
+
+    # `mc rb` without --force only removes an EMPTY bucket; a non-empty one is left alone.
+    - name: Remove the empty homedev bucket in MinIO
+      ansible.builtin.command: >
+        docker run --rm --network {{ docker_network }} --entrypoint sh minio/mc -c "
+          mc alias set local http://minio:9000 {{ minio_root_user }} {{ minio_root_password }} >/dev/null &&
+          (mc ls local/homedev >/dev/null 2>&1 && mc rb local/homedev || echo 'no homedev bucket')"
+      register: homedev_bucket
+      changed_when: "'Removed' in homedev_bucket.stdout"
+      no_log: true
+      become: yes
+      tags: [remove, never]
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+      become: yes
