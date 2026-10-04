@@ -16,8 +16,6 @@
     homedev_port: 3000
     homedev_nginx_port: 3001
 
-    cockroachdb_ui_port: 8090
-    cockroachdb_ui_nginx_port: 8091
     minio_console_port: 9001
     minio_console_nginx_port: 9002
     yugabytedb_ui_port: 7000
@@ -35,12 +33,6 @@
       - name: vLLM / SGLang inference
         port: "{{ vllm_nginx_port }}"
         description: OpenAI-compatible LLM API (lazy-loaded GPU backend)
-      - name: Homedev
-        port: "{{ homedev_nginx_port }}"
-        description: Clojure AI orchestrator REPL + web UI
-      - name: CockroachDB Admin UI
-        port: "{{ cockroachdb_ui_nginx_port }}"
-        description: Datomic's backend database
       - name: MinIO Console
         port: "{{ minio_console_nginx_port }}"
         description: S3-compatible object storage
@@ -190,25 +182,6 @@
       notify: Reload nginx
       when: not ansible_check_mode
       tags: [configure, homedev]
-
-    - name: Deploy nginx site config for CockroachDB admin UI
-      ansible.builtin.template:
-        src: ../templates/cockroachdb-nginx.conf.j2
-        dest: /etc/nginx/sites-available/cockroachdb
-        mode: '0644'
-      become: yes
-      notify: Reload nginx
-      tags: [configure, cockroachdb]
-
-    - name: Enable nginx site for CockroachDB admin UI
-      ansible.builtin.file:
-        src: /etc/nginx/sites-available/cockroachdb
-        dest: /etc/nginx/sites-enabled/cockroachdb
-        state: link
-      become: yes
-      notify: Reload nginx
-      when: not ansible_check_mode
-      tags: [configure, cockroachdb]
 
     - name: Deploy nginx site config for MinIO console
       ansible.builtin.template:
@@ -371,10 +344,9 @@
         - '{{ vllm_nginx_port }}'
         - '{{ homeassistant_nginx_port }}'
         - '{{ homedev_nginx_port }}'
-        - '{{ cockroachdb_ui_nginx_port }}'
         - '{{ minio_console_nginx_port }}'
       become: yes
-      tags: [security, homeassistant, cockroachdb, minio, yugabytedb]
+      tags: [security, homeassistant, minio, yugabytedb]
 
     # Allowed only while YugabyteDB is enabled; removed when it is disabled.
     - name: Manage UFW rule for the YugabyteDB UI vhost on Tailscale
