@@ -187,10 +187,10 @@ export const tools = [
   {
     name: 'request_human',
     description:
-      'Ask the operator to take over this session (sign in with Google/2FA/captcha, anything you cannot or should not do). They get a Telegram message with a link to a live view of this browser; when they press Done, the login is saved to the profile. Returns immediately: follow with await_human. Do not retry in a loop.',
+      'Ask the operator to take over this session (sign in with Google/2FA/captcha, anything you cannot or should not do). They get a Discord message with a link to a live view of this browser; when they press Done, the login is saved to the profile. Returns immediately: follow with await_human. Do not retry in a loop.',
     schema: {
       reason: z.string().min(3).max(300).describe('What you need, in one sentence, e.g. "Sign in to Perplexity with Google"'),
-      notify: z.boolean().default(true).describe('Send the Telegram notification. If false or delivery fails, the link is returned instead.'),
+      notify: z.boolean().default(true).describe('Send the Discord notification. If false or delivery fails, the link is returned instead.'),
     },
     run: async (s, { reason, notify }) => {
       const h = await requestHuman(s, reason, { sendNotification: notify });

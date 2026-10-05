@@ -32,8 +32,9 @@
 
     browser_service_env:
       BROWSER_SERVICE_TOKEN: "{{ browser_service_token }}"
-      TELEGRAM_BOT_TOKEN: "{{ vault_telegram_bot_token | default('') }}"
-      TELEGRAM_CHAT_ID: "{{ vault_telegram_chat_id | default('') }}"      # not yet created
+      DISCORD_WEBHOOK_URL: "{{ vault_browser_discord_webhook | default('') }}"   # not yet created
+      DISCORD_BOT_TOKEN: "{{ vault_discord_bot_token | default('') }}"
+      DISCORD_USER_ID: "{{ vault_discord_user_id | default('') }}"               # not yet created
 
     # Containers the browser may reach on the private network (the things Arcana/Claude debug).
     # Everything else private (yugabytedb, minio, this API, the tailnet, metadata IPs) is blocked.
@@ -54,7 +55,7 @@
         allowed_hosts: [arcana-dev, arcana-dev-2]
         allow_evaluate: true
       # Sign-in is done by the operator through the live view (Google SSO): the agent calls request_human,
-      # you get a Telegram link, sign in, press Done; cookies are saved to this profile. No stored credentials.
+      # you get a Discord link, sign in, press Done; cookies are saved to this profile. No stored credentials.
       # allowed_hosts must include every host top-level navigation passes through during sign-in
       # (a blocked one shows up in network_log as "not in profile allowed_hosts").
       perplexity:
@@ -90,9 +91,10 @@
       become: yes
       tags: [docker, configure, security, sites]
 
-    # Telegram notifies the operator when a session needs a human (live-view link). The chat id is
-    # optional: without it the service skips the message and returns the link to the caller instead.
-    - name: Deploy browser-service env file (API token, Telegram; 0600, blanks skipped)
+    # Discord notifies the operator when a session needs a human (live-view link): a channel webhook
+    # (vault_browser_discord_webhook) and/or a DM from the bot (vault_discord_user_id). With neither the
+    # service skips the message and returns the link to the caller instead.
+    - name: Deploy browser-service env file (API token, Discord; 0600, blanks skipped)
       ansible.builtin.copy:
         dest: "{{ secrets_path }}/browser-service.env"
         owner: "{{ browser_service_operator }}"

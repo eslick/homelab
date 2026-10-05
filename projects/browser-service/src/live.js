@@ -9,7 +9,7 @@ import * as profiles from './profiles.js';
 import { manager } from './sessions.js';
 
 // Human handoff: the agent asks the operator to take over a session (login, 2FA, captcha). The operator
-// gets a Telegram link to /live/<id>?t=<token>, sees the page via CDP screencast, drives it with mouse and
+// gets a Discord link to /live/<id>?t=<token>, sees the page via CDP screencast, drives it with mouse and
 // keyboard, and presses Done; the resulting cookies/localStorage are saved to the profile.
 // The token is scoped to one handoff and dies when it ends. Key/text events are never logged.
 

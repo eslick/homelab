@@ -16,12 +16,12 @@ const tool = (id, name, args = {}) => api('POST', `/v1/sessions/${id}/tools/${na
 const textOf = (r) => r.body.content.map((c) => c.text ?? '').join('\n');
 
 // --- fixture: login form -> cookie -> /home ; /home 'Welcome' when cookie present
-const telegram = [];
+const notices = [];
 const fixture = http.createServer((req, res) => {
   res.setHeader('content-type', 'text/html');
-  if (req.url === '/botTESTTOKEN/sendMessage' && req.method === 'POST') {
+  if (req.url === '/discord-webhook' && req.method === 'POST') {
     let b = '';
-    return req.on('data', (d) => (b += d)).on('end', () => (telegram.push(JSON.parse(b)), res.end('{"ok":true}')));
+    return req.on('data', (d) => (b += d)).on('end', () => (notices.push(JSON.parse(b)), res.writeHead(204).end()));
   }
   const authed = /sid=ok/.test(req.headers.cookie ?? '');
   if (req.url === '/login' && req.method === 'GET')
@@ -139,9 +139,10 @@ const rh = JSON.parse(textOf(r));
 assert.equal(rh.status, 'pending');
 assert.equal(rh.notified, true);
 assert.equal(rh.url, undefined, 'link is only returned when the notification failed');
-assert.equal(telegram.length, 1);
-assert.match(telegram[0].text, /Sign in to the fixture/);
-const link = telegram[0].text.match(/https?:\/\/\S+\/live\/\S+/)[0];
+assert.equal(notices.length, 1);
+assert.match(notices[0].content, /Sign in to the fixture/);
+assert.deepEqual(notices[0].allowed_mentions, { parse: [] });
+const link = notices[0].content.match(/https?:\/\/\S+\/live\/\S+/)[0];
 const lu = new URL(link);
 let pg = await fetch(link);
 assert.equal(pg.status, 200);

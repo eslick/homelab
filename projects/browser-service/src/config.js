@@ -18,13 +18,15 @@ export const config = {
   // local timezone/locale). Per-profile `identity` overrides these.
   locale: env.BROWSER_LOCALE ?? 'en-US',
   timezone: env.BROWSER_TIMEZONE ?? 'America/Los_Angeles',
-  // Human handoff: operator is notified on Telegram with a link to a live view of the session.
+  // Human handoff: operator is notified on Discord with a link to a live view of the session.
   publicUrl: (env.PUBLIC_URL ?? '').replace(/\/$/, ''),
   frameAncestors: list(env.FRAME_ANCESTORS, ''),
   handoffTtlS: Number(env.HANDOFF_TTL_S ?? 1800),
-  telegramToken: env.TELEGRAM_BOT_TOKEN ?? '',
-  telegramChatId: env.TELEGRAM_CHAT_ID ?? '',
-  telegramApi: env.TELEGRAM_API_BASE ?? 'https://api.telegram.org',
+  // Discord: a channel webhook (preferred) and/or a bot token + the operator's user id (DM).
+  discordWebhook: env.DISCORD_WEBHOOK_URL ?? '',
+  discordBotToken: env.DISCORD_BOT_TOKEN ?? '',
+  discordUserId: env.DISCORD_USER_ID ?? '',
+  discordApi: env.DISCORD_API_BASE ?? 'https://discord.com/api/v10',
   maxTextChars: Number(env.MAX_TEXT_CHARS ?? 40000),
 };
 

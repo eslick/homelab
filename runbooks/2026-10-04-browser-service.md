@@ -30,11 +30,11 @@ audit log, non-root, `cap_drop: ALL`, 6 GB/4 CPU/1024 pids, max 4 sessions, loop
 - `grep -c BROWSER /opt/secrets/arcana2.env` → 1.
 
 ## Update: human handoff, ordinary-browser identity, Perplexity profile (same day)
-- Added `request_human`/`await_human`: Telegram message with a tailnet link to a CDP-screencast live view (`/live/<id>?t=<token>`, websocket through nginx, iframe-able from the Arcana console). Done saves cookies/localStorage into the profile.
+- Added `request_human`/`await_human`: Discord message with a tailnet link to a CDP-screencast live view (`/live/<id>?t=<token>`, websocket through nginx, iframe-able from the Arcana console). Done saves cookies/localStorage into the profile.
 - Browser identity normalised: no automation flags, Chrome UA without `HeadlessChrome`, America/Los_Angeles + en-US.
 - `perplexity` profile (Google SSO, no stored credentials; `verify`: absent "Sign In" button, confirmed against the logged-out page, logged-in state not yet observed).
 - nginx vhost now forwards websocket upgrades. UFW unchanged (same port).
-- Telegram: bot token reuses `vault_telegram_bot_token`. **`vault_telegram_chat_id` is not created yet**: until it is, no message is sent and `request_human` returns the link to the caller.
+- Notifications moved to **Discord** (2026-10-05): the vault's Telegram token was not a valid Telegram token (21 chars, no `:`), and the id supplied as a "Telegram" id was the Discord bot's own id. `notify.js` sends via a channel webhook (`vault_browser_discord_webhook`) and/or a bot DM (`vault_discord_bot_token` + `vault_discord_user_id`). **Neither the webhook nor the user id exists yet**: until one is added (`ansible-vault edit group_vars/all.yml`, then `browser-service.yml --tags sites`), no message is sent and `request_human` returns the link to the caller. The bot is in one server ("Eslick-Persyn", 2 members); a webhook channel there must be private to the operator.
 - Verified: smoke suite 18/18 (incl. signing in through the live view with mouse, key and paste events); on the deployed service the screencast streams through the tailnet vhost and the Perplexity logged-out page loads without a block.
 - Rollback for this change: `git revert` and re-run `browser-service.yml` and `nginx.yml --tags browser-service`.
 

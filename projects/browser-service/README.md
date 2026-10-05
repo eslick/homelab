@@ -71,7 +71,7 @@ A failed automatic login leaves a screenshot in the data volume (`/data/artifact
 ## Human handoff (sign-in, 2FA, captcha, Google SSO)
 
 For logins the service cannot or should not do itself, the agent calls `request_human {reason}` and then `await_human`
-(polls up to 55 s per call; `pending` means call again). The operator gets a **Telegram** message with a link to
+(polls up to 55 s per call; `pending` means call again). The operator gets a **Discord** message with a link to
 `/live/<id>?t=<token>`: a live view of the headless session (CDP screencast) they drive with mouse and keyboard from any
 browser on the tailnet, including a phone (tap, drag-to-scroll, a type/paste box with optional masking, Tab/Enter/Back
 buttons, address bar). **Done** saves the session's cookies and localStorage into the profile (`persist` profiles), so the
@@ -79,8 +79,8 @@ next session starts logged in; `login` then just verifies it (`verify` block) an
 again when it has lapsed. The page can be iframed by the Arcana console (`FRAME_ANCESTORS`).
 
 - The link token is scoped to one handoff, expires after 30 min (`HANDOFF_TTL_S`) and dies on Done/Cancel/session close. Key and text events are never logged.
-- If Telegram is not configured or fails, `request_human` returns the link to the caller instead (it is otherwise withheld from the agent).
-- Needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (vault: `vault_telegram_bot_token`, `vault_telegram_chat_id`).
+- If Discord is not configured or fails, `request_human` returns the link to the caller instead (it is otherwise withheld from the agent).
+- Needs a Discord channel webhook (`DISCORD_WEBHOOK_URL`, vault `vault_browser_discord_webhook`; use a private channel) and/or the bot DMing the operator (`DISCORD_BOT_TOKEN` = `vault_discord_bot_token`, `DISCORD_USER_ID` = `vault_discord_user_id`). Webhook is tried first, then DM. Messages carry empty `allowed_mentions` so agent text cannot ping anyone.
 - Navigation during a handoff is still subject to the profile's `allowed_hosts`; add hosts a sign-in redirects through.
 
 ## Browser identity
@@ -127,7 +127,7 @@ link security, screencast frames, mouse/key/paste input through the live view, s
 ```
 docker build -t browser-service:test projects/browser-service
 docker run -d --rm --name bs-test --init --shm-size=1g -e BROWSER_SERVICE_TOKEN=t -e ALLOW_INTERNAL_HOSTS=localhost \
-  -e SITES_FILE=/app/test/sites.json -e TELEGRAM_BOT_TOKEN=TESTTOKEN -e TELEGRAM_CHAT_ID=42 -e TELEGRAM_API_BASE=http://127.0.0.1:9911 \
+  -e SITES_FILE=/app/test/sites.json -e DISCORD_WEBHOOK_URL=http://127.0.0.1:9911/discord-webhook \
   -e PUBLIC_URL=http://127.0.0.1:8931 -e FRAME_ANCESTORS=https://arcana.test -v $PWD/projects/browser-service/test:/app/test:ro browser-service:test
-docker exec -e BROWSER_SERVICE_TOKEN=t bs-test node test/smoke.mjs; docker rm -f bs-test
+docker exec -e BROWSER_SERVICE_TOKEN=t bs-test node test/smoke.mjs; node --test projects/browser-service/test/notify.test.mjs; docker rm -f bs-test
 ```
