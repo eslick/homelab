@@ -13,6 +13,8 @@
 - name: Manage Arcana 2 runtime
   hosts: homelab
   gather_facts: no
+  vars_files:
+    - ../vars/browser-service.yml
 
   vars:
     compose_base: /opt/compose
@@ -42,6 +44,7 @@
       GOOGLE_CLIENT_SECRET: "{{ vault_google_client_secret | default('') }}"
       DISCORD_BOT_TOKEN: "{{ vault_discord_bot_token | default('') }}"
       TELEGRAM_BOT_TOKEN: "{{ vault_telegram_bot_token | default('') }}"
+      BROWSER_SERVICE_TOKEN: "{{ browser_service_token }}"        # see docs/handoff/homelab-browser-service.md in the arcana2 repo
       FLUXON_LICENSE_KEY: "{{ vault_fluxon_license_key | default('') }}"
       VOYAGE_API_KEY: "{{ vault_voyage_api_key | default('') }}"       # not yet created
       GEMINI_API_KEY: "{{ vault_gemini_api_key | default('') }}"       # not yet created

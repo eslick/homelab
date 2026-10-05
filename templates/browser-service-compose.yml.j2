@@ -1,0 +1,39 @@
+# Headless Chromium session service (REST + MCP). Managed by playbooks/browser-service.yml;
+# source in projects/browser-service. Sessions are created/closed through the API; this stack
+# only needs to be up for them to exist.
+name: browser-service
+services:
+  browser-service:
+    build:
+      context: {{ browser_service_src }}
+    image: browser-service:local
+    container_name: browser-service
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb            # chromium needs >64M /dev/shm
+    mem_limit: {{ browser_service_mem }}
+    cpus: {{ browser_service_cpus }}
+    pids_limit: 1024
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - {{ secrets_path }}/browser-service.env   # BROWSER_SERVICE_TOKEN
+    environment:
+      MAX_SESSIONS: "{{ browser_service_max_sessions }}"
+      ALLOW_INTERNAL_HOSTS: "{{ browser_service_internal_hosts | join(',') }}"
+      SITES_FILE: /run/secrets/browser-sites.json
+    ports:
+      - "127.0.0.1:{{ browser_service_port }}:8931"   # nginx serves it on the tailnet; see playbooks/nginx.yml
+    volumes:
+      - browser-data:/data
+      - {{ secrets_path }}/browser-sites.json:/run/secrets/browser-sites.json:ro
+    networks:
+      - {{ docker_network }}
+
+volumes:
+  browser-data:
+
+networks:
+  {{ docker_network }}:
+    external: true

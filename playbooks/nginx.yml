@@ -3,6 +3,9 @@
   hosts: homelab
   gather_facts: yes
 
+  vars_files:
+    - ../vars/browser-service.yml
+
   vars:
     tailscale_hostname: speedracer.terrier-haddock.ts.net
     tailscale_ip: "{{ ansible_tailscale0.ipv4.address }}"
@@ -210,6 +213,25 @@
       when: not ansible_check_mode
       tags: [configure, minio]
 
+    - name: Deploy nginx site config for the browser service
+      ansible.builtin.template:
+        src: ../templates/browser-service-nginx.conf.j2
+        dest: /etc/nginx/sites-available/browser-service
+        mode: '0644'
+      become: yes
+      notify: Reload nginx
+      tags: [configure, browser-service]
+
+    - name: Enable nginx site for the browser service
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/browser-service
+        dest: /etc/nginx/sites-enabled/browser-service
+        state: link
+      become: yes
+      notify: Reload nginx
+      when: not ansible_check_mode
+      tags: [configure, browser-service]
+
     - name: Deploy nginx site config for YugabyteDB admin UI
       ansible.builtin.template:
         src: ../templates/yugabytedb-nginx.conf.j2
@@ -368,8 +390,9 @@
         - '{{ homeassistant_nginx_port }}'
         - '{{ minio_console_nginx_port }}'
         - '{{ minio_api_nginx_port }}'
+        - '{{ browser_service_nginx_port }}'
       become: yes
-      tags: [security, homeassistant, minio, yugabytedb]
+      tags: [security, homeassistant, minio, yugabytedb, browser-service]
 
     # Allowed only while YugabyteDB is enabled; removed when it is disabled.
     - name: Manage UFW rule for the YugabyteDB UI vhost on Tailscale

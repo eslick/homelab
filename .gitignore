@@ -8,3 +8,4 @@ __pycache__/
 health-reports/   # optional: comment out if you want reports in git
 projects/*
 !projects/sglang-watcher/
+!projects/browser-service/

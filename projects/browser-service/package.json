@@ -1,0 +1,18 @@
+{
+  "name": "browser-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless Chromium session service (REST + MCP) with profile-based auto-login",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "otpauth": "^9.3.0",
+    "playwright-core": "1.63.0",
+    "zod": "^3.25.0",
+    "zod-to-json-schema": "^3.24.0"
+  }
+}

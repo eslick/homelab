@@ -1,0 +1,134 @@
+---
+# Headless Chromium session service for Arcana and Claude (via MCP). Source: projects/browser-service.
+#
+# Usage:
+#   ansible-playbook playbooks/browser-service.yml --check --diff
+#   ansible-playbook playbooks/browser-service.yml                              # up (rebuilds on source change)
+#   ansible-playbook playbooks/browser-service.yml --tags sites                 # only re-render site credentials
+#   ansible-playbook playbooks/browser-service.yml -e browser_service_state=absent   # down; keeps the data volume
+#
+# Adding a site Arcana may log in to: add its vault vars to group_vars/all.yml (ansible-vault edit),
+# add an entry to browser_sites below, run with --tags sites. See projects/browser-service/README.md.
+
+- name: Manage the headless browser service
+  hosts: homelab
+  gather_facts: no
+  vars_files:
+    - ../vars/browser-service.yml
+
+  vars:
+    compose_base: /opt/compose
+    docker_network: homelab-net
+    secrets_path: /opt/secrets
+    browser_service_src: "{{ (playbook_dir ~ '/../projects/browser-service') | realpath }}"
+    browser_service_state: present      # present | absent (absent keeps the browser-data volume)
+    browser_service_max_sessions: 4
+    browser_service_mem: 6g
+    browser_service_cpus: 4
+    browser_service_operator: eslick    # owns the token file so the operator can export it for MCP clients
+    browser_service_uid: 1001           # pwuser inside the image; must be able to read the sites file
+
+    # Containers the browser may reach on the private network (the things Arcana/Claude debug).
+    # Everything else private (yugabytedb, minio, this API, the tailnet, metadata IPs) is blocked.
+    browser_service_internal_hosts:
+      - arcana-dev
+      - arcana-dev-2
+
+    # Profiles. `allowed_hosts` restricts top-level navigation; sessions on a profile with
+    # credentials also have `evaluate` disabled unless allow_evaluate: true. Secrets come from the
+    # vault via `default('')`, so a profile without its vault vars simply has no credentials.
+    # Fields: label, login_url, allowed_hosts, username, password, totp_secret (base32),
+    #   form{username,password,submit,totp}, steps[], verify{url, present|absent} (required with credentials),
+    #   allow_internal[], allow_evaluate.
+    browser_sites:
+      # Credential-less profile for debugging Arcana's own admin console.
+      arcana:
+        label: Arcana admin console
+        allowed_hosts: [arcana-dev, arcana-dev-2]
+        allow_evaluate: true
+      # Template for a personal site (disabled until its vault vars exist):
+      # example:
+      #   label: Example
+      #   login_url: https://example.com/login
+      #   allowed_hosts: [example.com, "*.example.com"]
+      #   username: "{{ vault_browser_example_user }}"
+      #   password: "{{ vault_browser_example_password }}"
+      #   totp_secret: "{{ vault_browser_example_totp | default('') }}"
+      #   verify: { url: "https://example.com/account", present: "text=Sign out" }
+
+  tasks:
+    - name: Ensure browser-service compose directory exists
+      ansible.builtin.file:
+        path: "{{ compose_base }}/browser-service"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [docker, configure]
+
+    - name: Ensure secrets directory exists
+      ansible.builtin.file:
+        path: "{{ secrets_path }}"
+        state: directory
+      become: yes
+      tags: [docker, configure, security, sites]
+
+    - name: Deploy browser-service API token env file (0600)
+      ansible.builtin.copy:
+        dest: "{{ secrets_path }}/browser-service.env"
+        owner: "{{ browser_service_operator }}"
+        group: "{{ browser_service_operator }}"
+        mode: '0600'
+        content: "BROWSER_SERVICE_TOKEN={{ browser_service_token }}\n"
+      no_log: true
+      become: yes
+      tags: [docker, configure, security]
+
+    # Rendered with `default` filters already applied; profiles whose vault vars are missing fail
+    # loudly (undefined variable) rather than shipping empty credentials.
+    - name: Deploy browser-service site/profile definitions (readable only by the container user)
+      ansible.builtin.copy:
+        dest: "{{ secrets_path }}/browser-sites.json"
+        owner: "{{ browser_service_uid }}"
+        group: "{{ browser_service_uid }}"
+        mode: '0400'
+        content: "{{ {'sites': browser_sites} | to_nice_json }}\n"
+      no_log: true
+      become: yes
+      notify: Restart browser-service
+      tags: [docker, configure, security, sites]
+
+    - name: Deploy browser-service compose file from template
+      ansible.builtin.template:
+        src: ../templates/browser-service-compose.yml.j2
+        dest: "{{ compose_base }}/browser-service/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [docker, configure]
+
+    - name: Build and start browser-service
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/browser-service"
+        state: "{{ browser_service_state }}"
+        build: always
+      become: yes
+      when: not ansible_check_mode
+      tags: [docker, service]
+
+    - name: Wait for browser-service to answer
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ browser_service_port }}/healthz"
+        timeout: 5
+      register: browser_health
+      until: browser_health.status == 200
+      retries: 12
+      delay: 5
+      when: not ansible_check_mode and browser_service_state == 'present'
+      tags: [docker, service]
+
+  handlers:
+    - name: Restart browser-service
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/browser-service"
+        state: restarted
+      become: yes
+      when: not ansible_check_mode and browser_service_state == 'present'

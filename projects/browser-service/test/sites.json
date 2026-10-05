@@ -1,0 +1,1 @@
+{"sites":{"fixture":{"label":"Fixture","login_url":"http://localhost:9911/login","allowed_hosts":["localhost"],"username":"me@x.test","password":"s3cret","verify":{"url":"http://localhost:9911/home","present":"h1:has-text('Welcome')"}}}}

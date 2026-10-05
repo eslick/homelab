@@ -1,0 +1,11 @@
+---
+# Shared by playbooks/browser-service.yml (server), playbooks/arcana2.yml (client token) and
+# playbooks/nginx.yml (tailnet vhost). No secret values live here.
+browser_service_port: 8931          # 127.0.0.1-bound container port
+browser_service_nginx_port: 8931    # tailnet TLS port (nginx)
+browser_service_url_internal: http://browser-service:8931   # from containers on homelab-net
+
+# Bearer token for the REST + MCP API. Generated once on first use and kept on the operator
+# account (like ~/.ssh/internal-default.txt for MinIO); never committed. Rotate by deleting the
+# file and re-running browser-service.yml + arcana2.yml --tags secrets.
+browser_service_token: "{{ lookup('ansible.builtin.password', '~/.ssh/browser-service-token length=48 chars=ascii_letters,digits') }}"
