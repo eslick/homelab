@@ -18,11 +18,15 @@ services:
     security_opt:
       - no-new-privileges:true
     env_file:
-      - {{ secrets_path }}/browser-service.env   # BROWSER_SERVICE_TOKEN
+      - {{ secrets_path }}/browser-service.env   # BROWSER_SERVICE_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
     environment:
       MAX_SESSIONS: "{{ browser_service_max_sessions }}"
       ALLOW_INTERNAL_HOSTS: "{{ browser_service_internal_hosts | join(',') }}"
       SITES_FILE: /run/secrets/browser-sites.json
+      PUBLIC_URL: "{{ browser_service_public_url }}"
+      FRAME_ANCESTORS: "{{ browser_service_frame_ancestors | join(',') }}"
+      BROWSER_TIMEZONE: "{{ browser_service_timezone }}"
+      BROWSER_LOCALE: "{{ browser_service_locale }}"
     ports:
       - "127.0.0.1:{{ browser_service_port }}:8931"   # nginx serves it on the tailnet; see playbooks/nginx.yml
     volumes:

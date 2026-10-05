@@ -2,6 +2,7 @@
 // starts a fixture site on :9911, then drives the service over REST and MCP.
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import WebSocket from 'ws';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -15,8 +16,13 @@ const tool = (id, name, args = {}) => api('POST', `/v1/sessions/${id}/tools/${na
 const textOf = (r) => r.body.content.map((c) => c.text ?? '').join('\n');
 
 // --- fixture: login form -> cookie -> /home ; /home 'Welcome' when cookie present
+const telegram = [];
 const fixture = http.createServer((req, res) => {
   res.setHeader('content-type', 'text/html');
+  if (req.url === '/botTESTTOKEN/sendMessage' && req.method === 'POST') {
+    let b = '';
+    return req.on('data', (d) => (b += d)).on('end', () => (telegram.push(JSON.parse(b)), res.end('{"ok":true}')));
+  }
   const authed = /sid=ok/.test(req.headers.cookie ?? '');
   if (req.url === '/login' && req.method === 'GET')
     return res.end('<form method=post action=/login><input name=email><input type=password name=pw><button type=submit>Go</button></form>');
@@ -113,6 +119,78 @@ await client.close();
 await new Promise((r) => setTimeout(r, 1500));
 assert.equal((await api('GET', '/v1/sessions')).body.length, 0, 'MCP disconnect closes its session');
 ok('mcp');
+
+// ---- identity: looks like an ordinary browser
+r = await api('POST', '/v1/sessions', { profile: 'manual' });
+const hs = r.body.id;
+await tool(hs, 'navigate', { url: 'http://localhost:9911/login' });
+const ident = JSON.parse(JSON.parse(textOf(await tool(hs, 'evaluate', { expression: 'JSON.stringify({ua:navigator.userAgent,wd:navigator.webdriver,tz:Intl.DateTimeFormat().resolvedOptions().timeZone,lang:navigator.language})' }))));
+assert.ok(!/Headless/.test(ident.ua), ident.ua);
+assert.equal(ident.wd, false);
+assert.equal(ident.tz, 'America/Los_Angeles');
+ok('browser identity looks ordinary');
+
+// ---- human handoff: credential-less profile, operator signs in through the live view
+const lr = await tool(hs, 'login');
+assert.ok(lr.status >= 400 && /request_human/.test(JSON.stringify(lr.body)));
+await tool(hs, 'navigate', { url: 'http://localhost:9911/login' }); // the login check left us on /home
+r = await tool(hs, 'request_human', { reason: 'Sign in to the fixture' });
+const rh = JSON.parse(textOf(r));
+assert.equal(rh.status, 'pending');
+assert.equal(rh.notified, true);
+assert.equal(rh.url, undefined, 'link is only returned when the notification failed');
+assert.equal(telegram.length, 1);
+assert.match(telegram[0].text, /Sign in to the fixture/);
+const link = telegram[0].text.match(/https?:\/\/\S+\/live\/\S+/)[0];
+const lu = new URL(link);
+let pg = await fetch(link);
+assert.equal(pg.status, 200);
+assert.match(pg.headers.get('content-security-policy'), /frame-ancestors 'self' https:\/\/arcana\.test/);
+assert.equal((await fetch(lu.origin + lu.pathname + '?t=wrong')).status, 403);
+await assert.rejects(new Promise((res, rej) => { const w = new WebSocket(`ws://127.0.0.1:8931${lu.pathname}/ws?t=wrong`); w.on('open', res); w.on('error', rej); }));
+ok('live link: page served with frame-ancestors, bad token rejected');
+
+const ws = new WebSocket(`ws://127.0.0.1:8931${lu.pathname}/ws${lu.search}`);
+let frames = 0;
+ws.on('message', (d, bin) => bin && d[0] === 1 && frames++);
+await new Promise((res, rej) => (ws.on('open', res), ws.on('error', rej)));
+const send = (o) => ws.send(JSON.stringify(o));
+const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
+await sleep(1500);
+assert.ok(frames > 0, 'screencast frames arrive');
+ok('screencast frames');
+
+const box = async (sel) => JSON.parse(JSON.parse(textOf(await tool(hs, 'evaluate', { expression: `JSON.stringify((r=>({x:r.x+r.width/2,y:r.y+r.height/2}))(document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect()))` }))));
+const click = async (sel) => { const b = await box(sel); send({ t: 'mouse', a: 'down', x: b.x, y: b.y }); send({ t: 'mouse', a: 'up', x: b.x, y: b.y }); await sleep(150); };
+await click('input[name=email]');
+for (const ch of 'me@x.test') { send({ t: 'key', a: 'down', key: ch }); send({ t: 'key', a: 'up', key: ch }); }
+await click('input[name=pw]');
+send({ t: 'text', text: 's3cret' }); // paste path
+await sleep(300);
+await click('button[type=submit]');
+await sleep(1500);
+assert.match(textOf(await tool(hs, 'get_text')), /Welcome/);
+ok('human input (mouse, keys, paste) signs in through the live view');
+
+send({ t: 'done' });
+r = await tool(hs, 'await_human', { timeout_s: 10 });
+assert.equal(JSON.parse(textOf(r)).status, 'done');
+await api('DELETE', `/v1/sessions/${hs}`);
+// state captured: a new session on the profile is already logged in; login verifies it
+r = await api('POST', '/v1/sessions', { profile: 'manual' });
+const hs2 = r.body.id;
+assert.equal(JSON.parse(textOf(await tool(hs2, 'login'))).status, 'already_logged_in');
+await api('DELETE', `/v1/sessions/${hs2}`);
+ok('handoff done captures login for the profile');
+
+// a finished handoff's link is dead
+assert.equal((await fetch(link)).status, 403);
+// cancel path
+r = await api('POST', '/v1/sessions', { profile: 'manual', login: false });
+const hs3 = r.body.id;
+await tool(hs3, 'request_human', { reason: 'cancel me' });
+await api('DELETE', `/v1/sessions/${hs3}`);
+ok('handoff cleanup');
 
 console.log(`\n${pass} checks passed`);
 process.exit(0);

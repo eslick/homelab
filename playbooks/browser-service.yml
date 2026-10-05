@@ -26,7 +26,14 @@
     browser_service_mem: 6g
     browser_service_cpus: 4
     browser_service_operator: eslick    # owns the token file so the operator can export it for MCP clients
+    browser_service_timezone: America/Los_Angeles   # browser reports the operator's timezone/locale, not UTC
+    browser_service_locale: en-US
     browser_service_uid: 1001           # pwuser inside the image; must be able to read the sites file
+
+    browser_service_env:
+      BROWSER_SERVICE_TOKEN: "{{ browser_service_token }}"
+      TELEGRAM_BOT_TOKEN: "{{ vault_telegram_bot_token | default('') }}"
+      TELEGRAM_CHAT_ID: "{{ vault_telegram_chat_id | default('') }}"      # not yet created
 
     # Containers the browser may reach on the private network (the things Arcana/Claude debug).
     # Everything else private (yugabytedb, minio, this API, the tailnet, metadata IPs) is blocked.
@@ -39,13 +46,24 @@
     # vault via `default('')`, so a profile without its vault vars simply has no credentials.
     # Fields: label, login_url, allowed_hosts, username, password, totp_secret (base32),
     #   form{username,password,submit,totp}, steps[], verify{url, present|absent} (required with credentials),
-    #   allow_internal[], allow_evaluate.
+    #   allow_internal[], allow_evaluate, identity{user_agent,locale,timezone}.
     browser_sites:
       # Credential-less profile for debugging Arcana's own admin console.
       arcana:
         label: Arcana admin console
         allowed_hosts: [arcana-dev, arcana-dev-2]
         allow_evaluate: true
+      # Sign-in is done by the operator through the live view (Google SSO): the agent calls request_human,
+      # you get a Telegram link, sign in, press Done; cookies are saved to this profile. No stored credentials.
+      # allowed_hosts must include every host top-level navigation passes through during sign-in
+      # (a blocked one shows up in network_log as "not in profile allowed_hosts").
+      perplexity:
+        label: Perplexity (Google SSO, human-managed)
+        allowed_hosts: [perplexity.ai, "*.perplexity.ai", accounts.google.com, "*.google.com", accounts.youtube.com]
+        allow_evaluate: true
+        verify:
+          url: https://www.perplexity.ai/
+          absent: "button:has-text('Sign in'), a:has-text('Sign in')"   # provisional; confirm on the live site
       # Template for a personal site (disabled until its vault vars exist):
       # example:
       #   label: Example
@@ -72,13 +90,15 @@
       become: yes
       tags: [docker, configure, security, sites]
 
-    - name: Deploy browser-service API token env file (0600)
+    # Telegram notifies the operator when a session needs a human (live-view link). The chat id is
+    # optional: without it the service skips the message and returns the link to the caller instead.
+    - name: Deploy browser-service env file (API token, Telegram; 0600, blanks skipped)
       ansible.builtin.copy:
         dest: "{{ secrets_path }}/browser-service.env"
         owner: "{{ browser_service_operator }}"
         group: "{{ browser_service_operator }}"
         mode: '0600'
-        content: "BROWSER_SERVICE_TOKEN={{ browser_service_token }}\n"
+        content: "{% for i in browser_service_env | dict2items if (i.value | string | trim) != '' %}{{ i.key }}={{ i.value }}\n{% endfor %}"
       no_log: true
       become: yes
       tags: [docker, configure, security]

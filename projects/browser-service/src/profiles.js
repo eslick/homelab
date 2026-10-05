@@ -149,7 +149,11 @@ export async function isLoggedIn(page, site) {
 export async function login(session, { force = false } = {}) {
   const { page, profileId: id } = session;
   const site = getSite(id);
-  if (!hasCredentials(site)) throw new Error(`profile ${id} has no credentials configured`);
+  if (!hasCredentials(site)) {
+    // Human-managed profile (e.g. Google SSO): only verify the saved login.
+    if (site.verify && (await isLoggedIn(page, site))) return { status: 'already_logged_in' };
+    throw new Error(`profile ${id} is not logged in and has no stored credentials; call request_human so the operator can sign in`);
+  }
   if (!force && (await isLoggedIn(page, site))) return { status: 'already_logged_in' };
 
   const hosts = allowedHosts(site);

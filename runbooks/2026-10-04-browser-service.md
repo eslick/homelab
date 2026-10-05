@@ -29,6 +29,15 @@ audit log, non-root, `cap_drop: ALL`, 6 GB/4 CPU/1024 pids, max 4 sessions, loop
   built from the same image before deployment (a deliberate exception to "no direct docker run": nothing persistent, no volumes, removed afterwards).
 - `grep -c BROWSER /opt/secrets/arcana2.env` → 1.
 
+## Update: human handoff, ordinary-browser identity, Perplexity profile (same day)
+- Added `request_human`/`await_human`: Telegram message with a tailnet link to a CDP-screencast live view (`/live/<id>?t=<token>`, websocket through nginx, iframe-able from the Arcana console). Done saves cookies/localStorage into the profile.
+- Browser identity normalised: no automation flags, Chrome UA without `HeadlessChrome`, America/Los_Angeles + en-US.
+- `perplexity` profile (Google SSO, no stored credentials; `verify`: absent "Sign In" button, confirmed against the logged-out page, logged-in state not yet observed).
+- nginx vhost now forwards websocket upgrades. UFW unchanged (same port).
+- Telegram: bot token reuses `vault_telegram_bot_token`. **`vault_telegram_chat_id` is not created yet**: until it is, no message is sent and `request_human` returns the link to the caller.
+- Verified: smoke suite 18/18 (incl. signing in through the live view with mouse, key and paste events); on the deployed service the screencast streams through the tailnet vhost and the Perplexity logged-out page loads without a block.
+- Rollback for this change: `git revert` and re-run `browser-service.yml` and `nginx.yml --tags browser-service`.
+
 ## Add a personal site
 1. `ansible-vault edit group_vars/all.yml`: add `vault_browser_<site>_user` / `_password` (/ `_totp`).
 2. Add an entry to `browser_sites` in `playbooks/browser-service.yml` (template in the file; `verify` selector is mandatory).
@@ -42,6 +51,7 @@ audit log, non-root, `cap_drop: ALL`, 6 GB/4 CPU/1024 pids, max 4 sessions, loop
 - Rotate the token: delete `~/.ssh/browser-service-token`, re-run `browser-service.yml` and `arcana2.yml --tags secrets`, recreate the Arcana nodes.
 
 ## Known gaps
-- No human takeover (VNC) of a live session; no captcha solving.
+- Live view is a CDP screencast (no native popups/dropdowns/clipboard; popups follow as tabs); no captcha solving. Google may still refuse a headless browser even with a human typing: untested until the first real sign-in.
+- Passkeys cannot be used (no authenticator in the headless browser).
 - Shared single bearer token (no per-client scoping); one network guard at the application layer (no iptables egress policy).
 - Not added to the tailnet index/overview pages.

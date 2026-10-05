@@ -14,6 +14,17 @@ export const config = {
   // Hostnames that may resolve to private addresses (the things we are asked to debug).
   internalAllow: list(env.ALLOW_INTERNAL_HOSTS, 'arcana-dev,arcana-dev-2'),
   // Cap on text returned by tools so a huge page cannot flood a model's context.
+  // Browser identity: look like the operator's ordinary Chrome (no HeadlessChrome UA, no webdriver flag,
+  // local timezone/locale). Per-profile `identity` overrides these.
+  locale: env.BROWSER_LOCALE ?? 'en-US',
+  timezone: env.BROWSER_TIMEZONE ?? 'America/Los_Angeles',
+  // Human handoff: operator is notified on Telegram with a link to a live view of the session.
+  publicUrl: (env.PUBLIC_URL ?? '').replace(/\/$/, ''),
+  frameAncestors: list(env.FRAME_ANCESTORS, ''),
+  handoffTtlS: Number(env.HANDOFF_TTL_S ?? 1800),
+  telegramToken: env.TELEGRAM_BOT_TOKEN ?? '',
+  telegramChatId: env.TELEGRAM_CHAT_ID ?? '',
+  telegramApi: env.TELEGRAM_API_BASE ?? 'https://api.telegram.org',
   maxTextChars: Number(env.MAX_TEXT_CHARS ?? 40000),
 };
 

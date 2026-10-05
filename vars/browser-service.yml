@@ -3,6 +3,9 @@
 # playbooks/nginx.yml (tailnet vhost). No secret values live here.
 browser_service_port: 8931          # 127.0.0.1-bound container port
 browser_service_nginx_port: 8931    # tailnet TLS port (nginx)
+browser_service_public_url: https://speedracer.terrier-haddock.ts.net:8931   # base of operator handoff links (tailnet)
+browser_service_frame_ancestors:                                             # origins allowed to iframe the live view
+  - https://speedracer.terrier-haddock.ts.net:14000                          # Arcana admin console
 browser_service_url_internal: http://browser-service:8931   # from containers on homelab-net
 
 # Bearer token for the REST + MCP API. Generated once on first use and kept on the operator

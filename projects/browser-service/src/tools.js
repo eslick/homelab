@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { audit } from './audit.js';
 import { config } from './config.js';
+import { describe as describeHandoff, requestHuman, waitHuman } from './live.js';
 import * as profiles from './profiles.js';
 import { manager } from './sessions.js';
 
@@ -176,11 +177,35 @@ export const tools = [
   },
   {
     name: 'login',
-    description: "Log this session's profile in using credentials stored in the service (you never see them). Idempotent: a saved login is reused. Sessions created with a credentialed profile log in automatically.",
+    description: "Log this session's profile in using credentials stored in the service (you never see them). Idempotent: a saved login is reused. Sessions created with a credentialed profile log in automatically. For profiles without stored credentials this only verifies the saved login and tells you to call request_human if it has lapsed.",
     schema: { force: z.boolean().default(false).describe('Re-run the login even if the saved session still works') },
     run: async (s, { force }) => {
       if (!s.profileId) throw new Error('this session has no profile');
       return json(await profiles.login(s, { force }));
+    },
+  },
+  {
+    name: 'request_human',
+    description:
+      'Ask the operator to take over this session (sign in with Google/2FA/captcha, anything you cannot or should not do). They get a Telegram message with a link to a live view of this browser; when they press Done, the login is saved to the profile. Returns immediately: follow with await_human. Do not retry in a loop.',
+    schema: {
+      reason: z.string().min(3).max(300).describe('What you need, in one sentence, e.g. "Sign in to Perplexity with Google"'),
+      notify: z.boolean().default(true).describe('Send the Telegram notification. If false or delivery fails, the link is returned instead.'),
+    },
+    run: async (s, { reason, notify }) => {
+      const h = await requestHuman(s, reason, { sendNotification: notify });
+      return json(describeHandoff(h, { withUrl: !h.notified }));
+    },
+  },
+  {
+    name: 'await_human',
+    description: 'Wait (up to timeout_s) for the operator to finish the handoff. status: pending (call again), done (state saved; use login to verify), cancelled, expired.',
+    schema: { timeout_s: z.number().int().min(1).max(55).default(45) },
+    run: async (s, { timeout_s }) => {
+      const h = s.handoff ?? s.lastHandoff;
+      if (!h) throw new Error('no handoff has been requested in this session');
+      await waitHuman(h, timeout_s * 1000);
+      return json(describeHandoff(h));
     },
   },
   {

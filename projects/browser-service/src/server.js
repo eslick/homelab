@@ -3,6 +3,7 @@ import http from 'node:http';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { audit } from './audit.js';
 import { config } from './config.js';
+import { handleUpgrade, servePage } from './live.js';
 import { handleMcp } from './mcp.js';
 import * as profiles from './profiles.js';
 import { manager } from './sessions.js';
@@ -42,6 +43,8 @@ async function route(req, res) {
   const m = req.method;
 
   if (p === '/healthz') return send(res, 200, { ok: true, sessions: manager.sessions.size });
+  let live;
+  if (m === 'GET' && (live = p.match(/^\/live\/([0-9a-f]+)$/))) return servePage(req, res, live[1], url.searchParams.get('t'));
   if (!authorized(req)) return send(res, 401, { error: 'unauthorized' });
 
   if (p === '/mcp') return handleMcp(req, res, m === 'POST' ? await readJson(req) : undefined, url);
@@ -88,6 +91,11 @@ const server = http.createServer((req, res) => {
     if (!res.headersSent) send(res, status, { error: e.name === 'ZodError' ? 'invalid arguments' : e.message, ...(e.issues && { issues: e.issues }) });
     else res.end();
   });
+});
+
+server.on('upgrade', (req, socket, head) => {
+  if (req.url.startsWith('/live/')) return handleUpgrade(req, socket, head);
+  socket.destroy();
 });
 
 server.listen(config.port, '0.0.0.0', () => audit('server.start', { port: config.port, max_sessions: config.maxSessions }));

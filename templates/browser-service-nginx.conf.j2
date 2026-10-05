@@ -1,6 +1,12 @@
 # Browser service (REST + MCP streamable HTTP) on the tailnet. Container binds
 # 127.0.0.1:{{ browser_service_port }}; this vhost adds TLS. The service itself requires a bearer token.
-# MCP uses long-lived streaming responses, so buffering is off and timeouts are generous.
+# The live view (/live/...) is a websocket; MCP uses long-lived streaming responses, so buffering is off and timeouts are generous.
+# WebSocket upgrade only when asked for (live view at /live/<id>/ws); plain requests keep keepalive.
+map $http_upgrade $bs_conn_upgrade {
+    default upgrade;
+    ''      '';
+}
+
 server {
     listen {{ tailscale_ip }}:{{ browser_service_nginx_port }} ssl;
     server_name {{ tailscale_hostname }};
@@ -20,7 +26,8 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Connection "";
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $bs_conn_upgrade;
         proxy_read_timeout 3600;
         proxy_send_timeout 3600;
     }

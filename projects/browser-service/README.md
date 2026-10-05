@@ -47,7 +47,7 @@ session instead of creating one), `ttl_s=<n>`.
 
 ### Tools
 `navigate snapshot click fill press hover select_option wait_for screenshot get_text get_html evaluate
-console_messages network_log tabs login session_info close_session`. `snapshot` returns an accessibility
+console_messages network_log tabs login request_human await_human session_info close_session`. `snapshot` returns an accessibility
 tree with `[ref=…]` handles that `click`/`fill`/etc. accept; prefer it to screenshots. `console_messages`
 and `network_log` are the debugging tools (JS errors, failed/4xx/5xx requests, requests the policy blocked).
 
@@ -64,9 +64,32 @@ Login definition fields: `login_url`, `username`, `password`, `totp_secret` (bas
 `form: {username,password,submit,totp}` selector overrides (defaults handle ordinary and two-step forms), or
 `steps: [{goto|fill+value|click|press|wait_for}]` for odd sites (`{{username}} {{password}} {{totp}}` expand in values).
 
-Sites with captcha, passkeys or interactive 2FA: log in once by hand with `scripts/capture-state.mjs`
-(headed browser on your laptop → uploads the state). Refresh it when the site expires the session.
+Sites with captcha, passkeys or interactive 2FA: use the human handoff below (profile without `username`/`password`).
+`scripts/capture-state.mjs` (headed browser on your laptop → uploads the state) remains as a fallback for sites that refuse the headless browser even with a human at the keyboard.
 A failed automatic login leaves a screenshot in the data volume (`/data/artifacts/login-failure-<id>.png`).
+
+## Human handoff (sign-in, 2FA, captcha, Google SSO)
+
+For logins the service cannot or should not do itself, the agent calls `request_human {reason}` and then `await_human`
+(polls up to 55 s per call; `pending` means call again). The operator gets a **Telegram** message with a link to
+`/live/<id>?t=<token>`: a live view of the headless session (CDP screencast) they drive with mouse and keyboard from any
+browser on the tailnet, including a phone (tap, drag-to-scroll, a type/paste box with optional masking, Tab/Enter/Back
+buttons, address bar). **Done** saves the session's cookies and localStorage into the profile (`persist` profiles), so the
+next session starts logged in; `login` then just verifies it (`verify` block) and tells the agent to call `request_human`
+again when it has lapsed. The page can be iframed by the Arcana console (`FRAME_ANCESTORS`).
+
+- The link token is scoped to one handoff, expires after 30 min (`HANDOFF_TTL_S`) and dies on Done/Cancel/session close. Key and text events are never logged.
+- If Telegram is not configured or fails, `request_human` returns the link to the caller instead (it is otherwise withheld from the agent).
+- Needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (vault: `vault_telegram_bot_token`, `vault_telegram_chat_id`).
+- Navigation during a handoff is still subject to the profile's `allowed_hosts`; add hosts a sign-in redirects through.
+
+## Browser identity
+
+Sessions present as an ordinary desktop Chrome, not "HeadlessChrome in UTC": no automation switches (`navigator.webdriver`
+is false), a normal Chrome user agent matching the installed version, and the operator's timezone and locale
+(`BROWSER_TIMEZONE`, `BROWSER_LOCALE`; playbook vars `browser_service_timezone/_locale`). Per-profile override:
+`identity: {user_agent, locale, timezone}`. This is for the operator's own accounts at low volume; there is no captcha solving,
+proxy rotation or fingerprint randomisation, and sites that still challenge go through the handoff.
 
 ## Safety model
 
@@ -79,6 +102,7 @@ A failed automatic login leaves a screenshot in the data volume (`/data/artifact
 - **`evaluate` is off** for profiles with credentials (it could read session cookies) unless `allow_evaluate: true`.
 - **Prompt injection**: page text is untrusted. Callers acting on a logged-in profile should keep a human in the
   loop for irreversible actions (purchases, deletes, sends); this service does not judge intent.
+- The live view is full control of a session that may be logged in: tailnet-only, per-handoff token, `frame-ancestors` restricted, `no-store`/no-referrer.
 - Container: non-root, `cap_drop: ALL`, `no-new-privileges`, 6 GB / 4 CPU / 1024 pids caps, max 4 sessions,
   idle TTL 30 min (10 for MCP), hard cap 4 h. Downloads and permission prompts are denied.
 - `/data/audit.jsonl` logs every session/tool call (credentials redacted).
@@ -96,12 +120,14 @@ Sessions come and go through the API; the container only has to be up.
 
 ## Testing
 
-`test/smoke.mjs` drives a fixture login site through REST and MCP (12 checks: auth, secret-free listing, auto-login,
-saved state reuse, allowlist, private-range blocking, session cap, MCP lifecycle). It runs inside the container:
+`test/smoke.mjs` drives a fixture login site through REST and MCP (18 checks: auth, secret-free listing, auto-login,
+saved state reuse, allowlist, private-range blocking, session cap, MCP lifecycle, browser identity, and the full human handoff:
+link security, screencast frames, mouse/key/paste input through the live view, state capture, cleanup). It runs inside the container:
 
 ```
 docker build -t browser-service:test projects/browser-service
 docker run -d --rm --name bs-test --init --shm-size=1g -e BROWSER_SERVICE_TOKEN=t -e ALLOW_INTERNAL_HOSTS=localhost \
-  -e SITES_FILE=/app/test/sites.json -v $PWD/projects/browser-service/test:/app/test:ro browser-service:test
+  -e SITES_FILE=/app/test/sites.json -e TELEGRAM_BOT_TOKEN=TESTTOKEN -e TELEGRAM_CHAT_ID=42 -e TELEGRAM_API_BASE=http://127.0.0.1:9911 \
+  -e PUBLIC_URL=http://127.0.0.1:8931 -e FRAME_ANCESTORS=https://arcana.test -v $PWD/projects/browser-service/test:/app/test:ro browser-service:test
 docker exec -e BROWSER_SERVICE_TOKEN=t bs-test node test/smoke.mjs; docker rm -f bs-test
 ```

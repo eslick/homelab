@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { chromium } from 'playwright-core';
 import { audit } from './audit.js';
 import { config } from './config.js';
@@ -14,6 +15,8 @@ const push = (arr, item) => {
 export class Session {
   constructor(id, opts) {
     Object.assign(this, opts, { id, createdAt: Date.now(), lastUsed: Date.now(), busy: false });
+    this.events = new EventEmitter(); // 'pages' (tab set/current changed), 'closed'
+    this.handoff = null;              // pending human handoff, see live.js
     this.console = [];
     this.network = [];
     this.blocked = [];
@@ -41,12 +44,14 @@ export class Session {
       url: this.page?.url() ?? null,
       tabs: this.pages.length,
       allow_evaluate: this.allowEvaluate,
+      handoff: this.handoff?.id ?? null,
     };
   }
 
   watchPage(page) {
     this.pages.push(page);
     this.current = this.pages.length - 1;
+    this.events.emit('pages');
     const where = () => page.url();
     page.on('console', (m) => push(this.console, { t: Date.now(), type: m.type(), text: m.text(), url: where() }));
     page.on('pageerror', (e) => push(this.console, { t: Date.now(), type: 'pageerror', text: String(e.stack ?? e), url: where() }));
@@ -56,9 +61,13 @@ export class Session {
       const i = this.pages.indexOf(page);
       if (i >= 0) this.pages.splice(i, 1);
       this.current = Math.min(this.current, Math.max(this.pages.length - 1, 0));
+      this.events.emit('pages');
     });
   }
 }
+
+const ordinaryChromeUa = (version) =>
+  `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version.split('.')[0]}.0.0.0 Safari/537.36`;
 
 class SessionManager {
   constructor() {
@@ -92,8 +101,14 @@ class SessionManager {
     const browser = await chromium.launch({
       channel: process.env.BROWSER_CHANNEL ?? 'chromium',
       headless: true,
-      args: ['--disable-dev-shm-usage', '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'],
+      ignoreDefaultArgs: ['--enable-automation'],
+      args: [
+        '--disable-dev-shm-usage',
+        '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+        '--disable-blink-features=AutomationControlled', // navigator.webdriver === false, as in a normal browser
+      ],
     });
+    const identity = site?.identity ?? {};
     try {
       const context = await browser.newContext({
         storageState: profile ? profiles.loadState(profile) : undefined,
@@ -101,6 +116,10 @@ class SessionManager {
         acceptDownloads: false,
         serviceWorkers: 'block', // service workers bypass context.route, i.e. the network guard
         permissions: [],
+        // Present as an ordinary desktop Chrome rather than "HeadlessChrome" in UTC.
+        userAgent: identity.user_agent ?? ordinaryChromeUa(browser.version()),
+        locale: identity.locale ?? config.locale,
+        timezoneId: identity.timezone ?? config.timezone,
       });
       const session = new Session(id, {
         label: label ?? profile ?? 'ephemeral',
@@ -159,6 +178,7 @@ class SessionManager {
     const s = this.sessions.get(id);
     if (!s) return false;
     this.sessions.delete(id);
+    s.events.emit('closed');
     try {
       await profiles.saveState(s);
     } catch {
@@ -172,7 +192,7 @@ class SessionManager {
   reap() {
     const now = Date.now();
     for (const s of this.sessions.values()) {
-      if (!s.busy && now > s.expiresAt()) this.close(s.id).then(() => audit('session.expired', { session: s.id }));
+      if (!s.busy && !s.handoff && now > s.expiresAt()) this.close(s.id).then(() => audit('session.expired', { session: s.id }));
       else if (!s.browser.isConnected()) this.close(s.id);
     }
   }
