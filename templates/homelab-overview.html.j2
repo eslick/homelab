@@ -86,7 +86,7 @@
     <div class="widget k-app">
       <div class="w-label">Arcana 2</div>
       <div class="w-value"><a href="/arcana.html">Details →</a></div>
-      <div class="w-sub">Proof-driven agent OS on BEAM/OTP · 2 dev nodes · console <a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></div>
+      <div class="w-sub">Proof-driven agent OS on BEAM/OTP · 2 dev nodes · push origin <a href="https://{{ tailscale_hostname }}:8443">:8443</a> (tailscale serve) · console <a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">:{{ arcana2_nginx_port }}</a></div>
     </div>
     <div class="widget k-net">
       <div class="w-label">Home automation</div>
@@ -125,7 +125,7 @@
 
   <!-- nginx -->
   <rect class="node k-net" x="40" y="200" width="1120" height="56" rx="8"/>
-  <text class="t" x="58" y="224">nginx — sole ingress: TLS termination + reverse proxy</text>
+  <text class="t" x="58" y="224">nginx — main ingress: TLS termination + reverse proxy</text>
   <text class="s" x="58" y="243">Tailscale-issued certificate · proxies to 127.0.0.1 ports · also serves the static index and this overview on :443 (:80 redirects)</text>
 
   <!-- nginx -> containers -->
@@ -164,6 +164,9 @@
   <text class="t" x="966" y="348">arcana-dev</text><text class="s" x="966" y="365">Arcana 2 dev node (Elixir)</text><text class="m" x="966" y="382">127.0.0.1:4100 + tailnet IP</text>
   <rect class="node k-app" x="952" y="424" width="208" height="70" rx="8"/>
   <text class="t" x="966" y="446">arcana-dev-2</text><text class="s" x="966" y="463">Arcana 2 dev node #2</text><text class="m" x="966" y="480">tailnet IP :4101 · direct</text>
+  <rect class="node k-ts" x="952" y="546" width="208" height="62" rx="8"/>
+  <text class="t" x="966" y="568">tailscale serve</text><text class="s" x="966" y="585">:8443 · trusted cert (web push)</text><text class="m" x="966" y="600">→ 127.0.0.1:{{ arcana2_port }} · bypasses nginx</text>
+  <path class="edge" d="M1056 546V526H944V385H952" style="stroke-dasharray:5 4" marker-end="url(#a-cfg)"/>
   <path class="edge" d="M952 361H932" marker-end="url(#a-cfg)"/>
   <path class="edge" d="M952 459H828V396" marker-end="url(#a-cfg)"/>
   <text class="m tc" x="890" y="451">YSQL arcana_dev</text>
@@ -221,7 +224,7 @@
     <span><i style="border-color:var(--c-ts)"></i>Tailscale</span>
     <span><i style="border-color:var(--c-ext);border-style:dashed"></i>external</span>
   </div>
-  <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Rule of thumb: nginx is the only thing facing the tailnet and container ports bind to 127.0.0.1. UFW denies other interfaces by default but trusts the whole tailnet, so the loopback binding (not the firewall) is what keeps a container off the tailnet. Two exceptions are visible above: Home Assistant runs on the host network (needed for device discovery), and the Arcana dev nodes also bind the tailnet IP directly.</p>
+  <p class="muted" style="margin:0.8rem 0 0;font-size:0.8rem">Rule of thumb: nginx is the main thing facing the tailnet and container ports bind to 127.0.0.1. UFW denies other interfaces by default but trusts the whole tailnet, so the loopback binding (not the firewall) is what keeps a container off the tailnet. Two exceptions are visible above: Home Assistant runs on the host network (needed for device discovery), the Arcana dev nodes also bind the tailnet IP directly, and <span class="mono">tailscale serve</span> publishes Arcana on :8443 with a Tailscale-issued Let's Encrypt cert, because mobile browsers only accept web push from a trusted origin (nginx :443 and :4100 use the self-managed cert).</p>
   </div>
 </section>
 
@@ -458,6 +461,8 @@
   <rect class="node k-net" x="590" y="370" width="335" height="70" rx="8"/>
   <text class="t" x="604" y="394">TLS certificate</text><text class="s" x="604" y="412">tailscale cert → /etc/ssl/tailscale</text><text class="m" x="604" y="428">renewed weekly (cron, Sun 03:00)</text>
   <path class="edge" d="M925 405H975" marker-end="url(#a-ts2)"/>
+  <rect class="node k-ts" x="590" y="460" width="335" height="64" rx="8"/>
+  <text class="t" x="604" y="482">tailscale serve :8443</text><text class="s" x="604" y="500">trusted Let's Encrypt cert for Arcana web push</text><text class="m" x="604" y="516">→ 127.0.0.1:{{ arcana2_port }} · bypasses nginx</text>
 
   <rect class="node k-net" x="975" y="100" width="195" height="370" rx="8"/>
   <text class="t" x="989" y="124">nginx</text><text class="s" x="989" y="141">TLS on :443 and service ports</text>

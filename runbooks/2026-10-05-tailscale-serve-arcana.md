@@ -20,3 +20,8 @@ URL: https://speedracer.terrier-haddock.ts.net:8443 (tailnet only)
 
 ## Rollback
 `ansible-playbook playbooks/tailscale-serve.yml -e tailscale_serve_state=absent`
+
+## Documentation updated
+- `templates/homelab-overview.html.j2`: config diagram and Tailscale-access diagram show `tailscale serve :8443` bypassing nginx; rule-of-thumb text lists it as an exception; Arcana widget links the push origin.
+- `templates/arcana-overview.html.j2`: "Push origin" row.
+- `playbooks/nginx.yml`: snapshot date. Republish with `ansible-playbook playbooks/nginx.yml --tags overview`.

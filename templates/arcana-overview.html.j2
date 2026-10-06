@@ -402,6 +402,7 @@
         <dt>Containers</dt><dd class="mono">arcana-dev :4100, arcana-dev-2 :4101</dd>
         <dt>Ports</dt><dd>127.0.0.1 plus the tailnet IP, never all interfaces</dd>
         <dt>Console</dt><dd><a href="https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}">https://{{ tailscale_hostname }}:{{ arcana2_nginx_port }}</a></dd>
+        <dt>Push origin</dt><dd><a href="https://{{ tailscale_hostname }}:8443">https://{{ tailscale_hostname }}:8443</a> <span class="muted">tailscale serve, trusted cert, for mobile web push (playbooks/tailscale-serve.yml)</span></dd>
         <dt>Clustering</dt><dd>libcluster Epmd over <span class="mono">ARCANA_CLUSTER_HOSTS</span>, shared cookie</dd>
         <dt>Database</dt><dd><span class="mono">arcana_dev</span> on YugabyteDB; only the primary runs migrations</dd>
         <dt>LLM</dt><dd>Anthropic API (key in a root-only env file)</dd>

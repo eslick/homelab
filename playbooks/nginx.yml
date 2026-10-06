@@ -31,7 +31,7 @@
     # come from fragment files in its repo; see docs/arcana-overview-contract.md.
     arcana2_src_path: /home/eslick/projects/arcana2
     arcana_overview_dir: "{{ arcana2_src_path }}/docs/homelab"
-    overview_snapshot_date: "2026-10-04"
+    overview_snapshot_date: "2026-10-05"
     overview_arcana_ref: "2026-10-04 · branch model-store-query-atoms @ 7c1f6b55"
     tailscale_services:
       - name: Arcana 2
