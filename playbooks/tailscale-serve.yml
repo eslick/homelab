@@ -1,0 +1,46 @@
+---
+# Trusted HTTPS (Let's Encrypt via tailscaled) for Arcana 2 so mobile browsers accept web push.
+# nginx owns tailnet :443 (landing page) and :4100 (self-managed cert), so serve on :8443 instead.
+# URL: https://speedracer.terrier-haddock.ts.net:8443  ->  http://127.0.0.1:4100
+#
+# Usage:
+#   ansible-playbook playbooks/tailscale-serve.yml --check --diff
+#   ansible-playbook playbooks/tailscale-serve.yml
+#   ansible-playbook playbooks/tailscale-serve.yml -e tailscale_serve_state=absent   # remove the serve
+
+- name: Expose Arcana 2 over tailscale serve
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    tailscale_serve_state: present      # present | absent
+    tailscale_serve_https_port: 8443
+    tailscale_serve_backend: http://127.0.0.1:4100   # arcana2_port in playbooks/arcana2.yml
+
+  tasks:
+    - name: Read current tailscale serve config
+      ansible.builtin.command: tailscale serve status --json
+      register: ts_serve_status
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [configure, tailscale]
+
+    - name: Configure tailscale serve
+      ansible.builtin.command: >-
+        tailscale serve --bg --https={{ tailscale_serve_https_port }} {{ tailscale_serve_backend }}
+      when: >-
+        tailscale_serve_state == 'present' and
+        (tailscale_serve_backend not in ts_serve_status.stdout or
+         (':' ~ tailscale_serve_https_port) not in ts_serve_status.stdout)
+      become: yes
+      tags: [configure, tailscale]
+
+    - name: Remove tailscale serve
+      ansible.builtin.command: >-
+        tailscale serve --https={{ tailscale_serve_https_port }} off
+      when: >-
+        tailscale_serve_state == 'absent' and
+        (':' ~ tailscale_serve_https_port) in ts_serve_status.stdout
+      become: yes
+      tags: [configure, tailscale]
