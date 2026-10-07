@@ -32,7 +32,7 @@
     arcana2_src_path: /home/eslick/projects/arcana2
     arcana_overview_dir: "{{ arcana2_src_path }}/docs/homelab"
     overview_snapshot_date: "2026-10-05"
-    overview_arcana_ref: "2026-10-04 · branch model-store-query-atoms @ 7c1f6b55"
+    overview_arcana_ref: "2026-10-07 · main @ 37da38d9"
     tailscale_services:
       - name: Arcana 2
         port: "{{ arcana2_nginx_port }}"

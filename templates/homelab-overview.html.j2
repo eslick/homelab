@@ -148,7 +148,7 @@
   <text class="t" x="54" y="348">homeassistant</text><text class="s" x="54" y="365">Home Assistant Core · host net</text><text class="m" x="54" y="382">:{{ homeassistant_port }} on the host</text>
 
   <rect class="node k-gpu" x="268" y="326" width="208" height="70" rx="8"/>
-  <text class="t" x="282" y="348">sglang-watcher</text><text class="s" x="282" y="365">lazy-start proxy · idle 5 min</text><text class="m" x="282" y="382">127.0.0.1:{{ vllm_port }}</text>
+  <text class="t" x="282" y="348">sglang-watcher</text><text class="s" x="282" y="365">lazy-start proxy · idle 5 min</text><text class="m" x="282" y="382">host :{{ vllm_port }} · net :8080</text>
   <path class="edge" d="M372 396V424" marker-end="url(#a-cfg)"/>
   <text class="m" x="382" y="414">docker.sock</text>
   <rect class="node k-gpu" x="268" y="424" width="208" height="70" rx="8"/>
@@ -173,7 +173,7 @@
 
   <!-- external: Anthropic -->
   <rect class="node k-ext" x="1215" y="326" width="170" height="70" rx="8"/>
-  <text class="t" x="1229" y="348">Anthropic API</text><text class="s" x="1229" y="365">LLM calls from Arcana</text><text class="m" x="1229" y="382">HTTPS · API key</text>
+  <text class="t" x="1229" y="348">Anthropic API</text><text class="s" x="1229" y="365">remote LLM profile (Arcana)</text><text class="m" x="1229" y="382">HTTPS · API key</text>
   <path class="edge" d="M1160 361H1215" marker-end="url(#a-cfg)"/>
   <path class="edge" d="M1160 459H1198V361"/>
 
