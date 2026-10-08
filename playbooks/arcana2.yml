@@ -3,7 +3,11 @@
 # ~/projects/arcana2/docs/handoff/homelab-arcana2.md).
 #
 # Source of truth is the git checkout at arcana2_src_path, bind-mounted into the
-# container for live reload. Only the runtime wiring is managed here.
+# containers for live reload. The two-node cluster is defined by docker/compose.dev.yml in that
+# checkout (the same file `make dev.up` uses); this playbook runs that file rather than a
+# template copy, so the two cannot drift. Exception to the /opt/compose convention, deliberate:
+# the compose file is owned by the Arcana repo. This playbook manages what is outside it: the
+# provider env file, ARCANA_BIND_IP in docker/dev.env, the database, and the lifecycle.
 #
 # Usage:
 #   ansible-playbook playbooks/arcana2.yml --check --diff
@@ -22,11 +26,9 @@
     secrets_path: /opt/secrets
     arcana2_src_path: /home/eslick/projects/arcana2
     arcana2_port: 4100
-    arcana2_cookie: arcana-dev
     arcana2_db: arcana_dev
-    # YugabyteDB YSQL on the shared docker network (the backend arcana2's docs/tests target).
-    # Auth is disabled on this loopback-published dev instance; credentials are placeholders.
-    arcana2_database_url: "postgres://yugabyte:yugabyte@yugabytedb:5433/{{ arcana2_db }}"
+    arcana2_compose_dir: "{{ arcana2_src_path }}/docker"
+    arcana2_bind_ip: 100.74.60.51    # tailnet IP the consoles also publish on (never all interfaces)
     anthropic_api_key: "{{ vault_anthropic_api_key }}"
     arcana2_rebuild: false
 
@@ -58,14 +60,6 @@
     arcana2_env_owner: eslick
 
   tasks:
-    - name: Ensure arcana2 compose directory exists
-      ansible.builtin.file:
-        path: "{{ compose_base }}/arcana2"
-        state: directory
-        mode: '0755'
-      become: yes
-      tags: [docker, configure]
-
     # The directory is shared with other services and owned by eslick; leave its
     # ownership/mode alone and protect only the file we put in it.
     - name: Ensure secrets directory exists
@@ -86,12 +80,20 @@
       become: yes
       tags: [docker, configure, security, secrets]
 
-    - name: Deploy arcana2 compose file from template
-      ansible.builtin.template:
-        src: ../templates/arcana2-compose.yml.j2
-        dest: "{{ compose_base }}/arcana2/docker-compose.yml"
-        mode: '0644'
+    - name: Remove the retired generated compose copy (the repo's docker/compose.dev.yml is used instead)
+      ansible.builtin.file:
+        path: "{{ compose_base }}/arcana2/docker-compose.yml"
+        state: absent
       become: yes
+      tags: [docker, configure]
+
+    - name: Ensure ARCANA_BIND_IP is set in docker/dev.env (other lines, e.g. VAPID keys, are kept)
+      ansible.builtin.lineinfile:
+        path: "{{ arcana2_compose_dir }}/dev.env"
+        regexp: '^ARCANA_BIND_IP='
+        line: "ARCANA_BIND_IP={{ arcana2_bind_ip }}"
+        create: yes
+        mode: '0600'
       tags: [docker, configure]
 
     - name: List YugabyteDB databases
@@ -112,14 +114,14 @@
       become: yes
       tags: [docker]
 
-    - name: Build and start Arcana 2
+    - name: Build and start the Arcana 2 cluster from the repo compose file
       community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/arcana2"
+        project_src: "{{ arcana2_compose_dir }}"
+        files: [compose.dev.yml]
+        env_files: ["{{ arcana2_compose_dir }}/dev.env"]
         project_name: arcana-dev
         state: present
         build: "{{ 'always' if arcana2_rebuild | bool else 'policy' }}"
-      become: yes
-      when: not ansible_check_mode   # compose dir may not exist yet on a first dry run
       tags: [docker, service]
 
     - name: Wait for the Arcana 2 admin console to respond
@@ -129,6 +131,18 @@
         timeout: 5
       register: arcana2_health
       until: arcana2_health.status in [200, 301, 302, 303]
+      retries: 24
+      delay: 5
+      when: not ansible_check_mode
+      tags: [docker, service]
+
+    - name: Wait for the follower node's console
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:4101/"
+        status_code: [200, 301, 302, 303]
+        timeout: 5
+      register: arcana2_follower_health
+      until: arcana2_follower_health.status in [200, 301, 302, 303]
       retries: 24
       delay: 5
       when: not ansible_check_mode

@@ -98,3 +98,4 @@ DO NOT run ansible-playbook or make system changes in health check mode.
 ## Locally Developed Applications from Source
 - Are stored in projects/<project>
 - Must be deployed using ansible and docker-compose unless specified otherwise
+- Exception: arcana2 runs from its own `docker/compose.dev.yml` in the repo (also used by `make dev.up`); `playbooks/arcana2.yml` drives that file directly instead of a template copy, so don't re-add one
