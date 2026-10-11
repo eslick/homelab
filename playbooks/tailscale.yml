@@ -1,0 +1,124 @@
+---
+# Tailscale: install, tailscaled override (--accept-dns=false), UFW, and `tailscale serve`.
+# Play 2 is the former tailscale-serve.yml.
+
+- name: Tailscale node
+  hosts: homelab
+  gather_facts: yes
+
+  tasks:
+    - name: Add Tailscale apt repository key
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
+        creates: /usr/share/keyrings/tailscale-archive-keyring.gpg
+      become: yes
+      tags: [install, tailscale]
+
+    - name: Add Tailscale apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main"
+        state: present
+        filename: tailscale
+      become: yes
+      tags: [install, tailscale]
+
+    - name: Install Tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, tailscale]
+
+    - name: Ensure tailscaled systemd override directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/tailscaled.service.d
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [configure, tailscale]
+
+    - name: Configure tailscale to start with --accept-dns=false
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/tailscaled.service.d/override.conf
+        mode: '0644'
+        content: |
+          [Service]
+          ExecStartPost=/usr/bin/tailscale up --accept-dns=false
+      become: yes
+      notify: Reload systemd and restart tailscaled
+      tags: [configure, tailscale]
+
+    - name: Ensure tailscaled is running and enabled
+      ansible.builtin.service:
+        name: tailscaled
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, tailscale]
+
+    - name: Allow Tailscale through UFW
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+      become: yes
+      ignore_errors: yes  # interface may not exist until tailscale up is run
+      tags: [security, tailscale]
+
+    # Rules left behind by retired services (OpenClaw 18789/2099, Obsidian CouchDB 5984, Ollama 11434).
+    # Nothing listens on these ports any more. Deleting a rule that is absent is a no-op.
+
+  handlers:
+    - name: Reload systemd and restart tailscaled
+      ansible.builtin.systemd:
+        name: tailscaled
+        state: restarted
+        daemon_reload: yes
+      become: yes
+
+# Trusted HTTPS (Let's Encrypt via tailscaled) for Arcana 2 so mobile browsers accept web push.
+# nginx owns tailnet :443 (landing page) and :4100 (self-managed cert), so serve on :8443 instead.
+# URL: https://speedracer.terrier-haddock.ts.net:8443  ->  http://127.0.0.1:4100
+#
+# Usage:
+#   ansible-playbook playbooks/tailscale.yml --tags serve --check --diff
+#   ansible-playbook playbooks/tailscale.yml --tags serve
+#   ansible-playbook playbooks/tailscale.yml --tags serve -e tailscale_serve_state=absent   # remove the serve
+
+- name: Expose Arcana 2 over tailscale serve
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    tailscale_serve_state: present      # present | absent
+    tailscale_serve_https_port: 8443
+    tailscale_serve_backend: http://127.0.0.1:4100   # arcana2_port in playbooks/arcana2.yml
+
+  tasks:
+    - name: Read current tailscale serve config
+      ansible.builtin.command: tailscale serve status --json
+      register: ts_serve_status
+      changed_when: false
+      check_mode: no
+      become: yes
+      tags: [configure, tailscale]
+
+    - name: Configure tailscale serve
+      ansible.builtin.command: >-
+        tailscale serve --bg --https={{ tailscale_serve_https_port }} {{ tailscale_serve_backend }}
+      when: >-
+        tailscale_serve_state == 'present' and
+        (tailscale_serve_backend not in ts_serve_status.stdout or
+         (':' ~ tailscale_serve_https_port) not in ts_serve_status.stdout)
+      become: yes
+      tags: [configure, tailscale]
+
+    - name: Remove tailscale serve
+      ansible.builtin.command: >-
+        tailscale serve --https={{ tailscale_serve_https_port }} off
+      when: >-
+        tailscale_serve_state == 'absent' and
+        (':' ~ tailscale_serve_https_port) in ts_serve_status.stdout
+      become: yes
+      tags: [configure, tailscale]

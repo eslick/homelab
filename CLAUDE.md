@@ -3,7 +3,7 @@
 ## Server Identity
 - OS: Ubuntu 24.04 LTS
 - Role: Single-node homelab running Docker Compose workloads
-- Containers: OpenClaw, hobby websites, DBs and other utilities (see playbooks/docker.yml)
+- Containers: YugabyteDB, MinIO, Arcana 2, SGLang, Home Assistant, browser service (see playbooks/docker.yml and the other subsystem files)
 - Backup: Restic → NAS (/mnt/nas/backups/homelab) (NAS backs up to S3 independently)
 - Repo: ~/homelab → GitHub (this directory)
 
@@ -11,12 +11,32 @@
 **Every system change MUST go through Ansible. No exceptions.**
 
 Never run `sudo apt install`, `sudo systemctl enable`, or any direct mutation.
-The correct workflow is:
-1. Write or update the playbook in `playbooks/`
-2. **Auto-apply**: after editing a playbook, immediately run it through the apply cycle below
-3. Verify the change worked as expected
-4. Commit: `git add -A && git commit -m "<type>(<scope>): <desc>" && git push`
-5. Write runbook to `runbooks/YYYY-MM-DD-<task>.md`
+
+## Repository Model: state files + a change log
+- `playbooks/*.yml` — **one file per subsystem**, each describing the *current desired state*
+  (base, tailscale, storage, gpu, power, postfix, docker, nginx, sglang, browser-service,
+  homeassistant, obsidian-sync, syncthing, arcana2, monitoring, devtools, claude, backup).
+  `playbooks/site.yml` imports them in dependency order and is the whole-machine state.
+- `runbooks/YYYY-MM-DD-<task>.md` — the **time-indexed log** of what changed and why. Append-only history.
+- **Never add a new dated or one-off playbook for a change.** Edit the subsystem file that owns the
+  thing, so the playbooks always equal the aggregate of every change ever made. If the thing is new,
+  add a subsystem file and import it in `site.yml`.
+- Removing something = a `state: absent` task in the owning subsystem file (confirm with the user first
+  if it deletes data), not a `retire-*` playbook. Already-applied one-shots live in `playbooks/archive/`;
+  alternates that conflict with the default live in `playbooks/optional/`; actions rather than state
+  (e.g. reboot-ing upgrades) live in `playbooks/ops/`. None of those are imported by `site.yml`.
+- Anything done by hand that Ansible cannot do (OAuth logins, `tailscale up`, RAID assembly) goes in the
+  README "Full rebuild" section, so a rebuild never depends on reading the runbook history.
+
+## Change Workflow (every change, every time)
+1. Edit the owning subsystem playbook (and its template/vars).
+2. **Auto-apply** it through the cycle in "Playbook Auto-Apply" below.
+3. Verify the change worked as expected.
+4. Write the dated log entry `runbooks/YYYY-MM-DD-<task>.md` (what, why, playbook + tags used, verification, rollback).
+5. **Commit and push, every time**: `git add -A && git commit -m "<type>(<scope>): <desc>" && git push origin main`
+   — playbook, templates, README changes and the runbook go in the same commit. Do not leave changes
+   unpushed at the end of a task, and do not batch several changes into one push.
+6. If the change affects how to rebuild (new service, new manual step, new secret location), update `README.md`.
 
 ## Playbook Auto-Apply
 After writing or editing a playbook, automatically apply it using this sequence:
@@ -30,6 +50,8 @@ After writing or editing a playbook, automatically apply it using this sequence:
 When you know which tasks were changed, use `--tags` to run only the affected subset:
 - Pass `--tags <tag>` matching the tags on the changed tasks
 - Example: edited only the backup cron task → `--tags cron,backup`
+- `ansible-playbook playbooks/site.yml --check --diff` is the whole-host drift report; run it when unsure.
+  Known dry-run-only noise: `get_url` apt keys and compose `build` report "changed" under `--check`.
 - When adding a new task or unsure of impact, run the full playbook without `--tags`
 
 ### When NOT to auto-apply

@@ -1,4 +1,57 @@
 ---
+# Monitoring: temperature sensors, check-temps, mdadm alert address, and the claude -p health-check cron.
+# Play 2 is the former claude-health-cron.yml.
+
+- name: Host monitoring
+  hosts: homelab
+  gather_facts: yes
+
+  tasks:
+    - name: Install lm-sensors for CPU temperature monitoring
+      ansible.builtin.apt:
+        name: lm-sensors
+        state: present
+        update_cache: no
+      become: yes
+      tags: [install, monitoring]
+
+    - name: Ensure /var/log/homelab directory exists
+      ansible.builtin.file:
+        path: /var/log/homelab
+        state: directory
+        mode: '0755'
+        owner: eslick
+        group: eslick
+      become: yes
+      tags: [configure, monitoring]
+
+    - name: Deploy check-temps script
+      ansible.builtin.copy:
+        src: ../files/check-temps.sh
+        dest: /usr/local/bin/check-temps
+        mode: '0755'
+      become: yes
+      tags: [configure, monitoring]
+
+    - name: Configure mdadm mail alert address (mdmonitor exits 1 without one)
+      ansible.builtin.lineinfile:
+        path: /etc/mdadm/mdadm.conf
+        regexp: '^MAILADDR'
+        line: 'MAILADDR root'
+        insertafter: EOF
+      become: yes
+      notify: Restart mdmonitor
+      tags: [configure, raid, monitoring]
+
+    # --- Java + Clojure CLI ---
+
+  handlers:
+    - name: Restart mdmonitor
+      ansible.builtin.service:
+        name: mdmonitor
+        state: restarted
+      become: yes
+
 # Sets up the claude -p health check cron job.
 # Runs 3x daily and commits health reports to git.
 

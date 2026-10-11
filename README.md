@@ -62,14 +62,14 @@ Untested end to end; the order is derived from playbook dependencies. Fix this s
 ### 2. Foundations
 ```bash
 cd ~/homelab
-ansible-playbook playbooks/system.yml
-ansible-playbook playbooks/nas.yml          # mounts /mnt/nas (needs the NAS credentials from the vault)
-ansible-playbook playbooks/gpu.yml          # then reboot
-ansible-playbook playbooks/power.yml
-ansible-playbook playbooks/postfix.yml
+ansible-playbook playbooks/base.yml
+ansible-playbook playbooks/tailscale.yml      # installs tailscaled; then `sudo tailscale up --accept-dns=false` (manual login) unless /var/lib/tailscale is restored in step 3
+ansible-playbook playbooks/storage.yml        # mounts /mnt/nas (needs the NAS credentials from the vault)
+ansible-playbook playbooks/gpu.yml            # then reboot
 ```
-Disks: if the root LV needs growing use `playbooks/lvm-extend.yml` (`runbooks/2026-04-01-lvm-extend.md`).
-The md0 array (`/mnt/data`, optional) is reassembled by hand per `runbooks/2026-04-27-raid5-reassembly.md`; the fstab entry is `nofail`.
+Disks: if the root LV needs growing, `playbooks/archive/lvm-extend.yml` records how it was done
+(`runbooks/2026-04-01-lvm-extend.md`). The md0 array (`/mnt/data`, optional) is reassembled by hand per
+`runbooks/2026-04-27-raid5-reassembly.md`; its fstab entry is `nofail`.
 
 ### 3. Restore data with containers stopped
 ```bash
@@ -83,25 +83,24 @@ sudo -E restic restore latest --target / \
 sudo systemctl restart tailscaled              # reuses the restored node identity
 tailscale status                               # should be the original speedracer, not a new node
 ```
-Restoring `/etc` overwrites system config with the old copies; re-running the playbooks in step 4
-reconciles anything that drifted. If you restore onto a machine that already ran `system.yml`, review `/etc/fstab` and `/etc/netplan` afterwards.
+Restoring `/etc` overwrites system config with the old copies; step 4 reconciles anything that drifted.
+If you restore onto a machine that already ran `base.yml`, review `/etc/fstab` and `/etc/netplan` afterwards.
 
-### 4. Services (re-run, all idempotent)
+### 4. Everything else
+`playbooks/site.yml` is the aggregate desired state (one file per subsystem, imported in dependency
+order). Clone Arcana first (`git clone https://github.com/eslick/arcana2 ~/projects/arcana2`, skipped if `/home` was restored), then:
 ```bash
-ansible-playbook playbooks/backup.yml           # restic script + 03:00 cron
-ansible-playbook playbooks/docker.yml           # engine + compose-managed services (yugabyte, minio, couchdb...)
-ansible-playbook playbooks/nginx.yml
-ansible-playbook playbooks/tailscale-serve.yml
-ansible-playbook playbooks/sglang.yml           # or: make sglang-moe ; models re-download from Hugging Face
-ansible-playbook playbooks/browser-service.yml
-ansible-playbook playbooks/homeassistant.yml
-ansible-playbook playbooks/obsidian-sync.yml
-ansible-playbook playbooks/syncthing.yml
-git clone https://github.com/eslick/arcana2 ~/projects/arcana2   # skipped if /home was restored
-ansible-playbook playbooks/arcana2.yml          # --tags secrets first if you want to stage env files only
-ansible-playbook playbooks/claude-health-cron.yml
+ansible-playbook playbooks/site.yml --check --diff   # review
+ansible-playbook playbooks/site.yml
 ```
-Do not replay `retire-*`, `remove-*` playbooks or the pre-2026-10 runbooks about CockroachDB, Datomic, homedev, AgentOS, OpenClaw.
+Models re-download from Hugging Face on first inference. Not in `site.yml`: `optional/vllm.yml`
+(alternate to SGLang, they share the GPU), `ops/system-upgrade.yml` (reboots), `archive/` (history).
+Do not replay `archive/`, and ignore pre-2026-10 runbooks about CockroachDB, Datomic, homedev, AgentOS, OpenClaw.
+
+Manual steps Ansible cannot do (so no runbook is needed): `tailscale up` login; re-authorizing Google
+Workspace MCP if `/opt/secrets/google` is lost; the md0 array; Discord webhook/user id in the vault if the
+browser-service notifications are wanted; the browser-service token lives in `~/.ssh/browser-service-token`
+(generated on first use, restored with `/home`).
 
 ### 5. Verify
 - `docker ps` all running/healthy; `systemctl --failed` empty.
@@ -111,7 +110,10 @@ Do not replay `retire-*`, `remove-*` playbooks or the pre-2026-10 runbooks about
 - Re-authorize Google Workspace MCP if `/opt/secrets/google` was lost (`runbooks/2026-04-06-google-workspace-mcp.md`).
 - Run `make backup-credentials` once the new machine is healthy.
 
-## Runbook index
+## Repository layout
 
-Runbooks are a change log, `runbooks/YYYY-MM-DD-<task>.md`. For restore-relevant ones grep by service name
-(`nas-mount`, `raid5-reassembly`, `yugabytedb`, `minio-*`, `homeassistant`, `browser-service`, `arcana-*`, `sglang-*`, `tailscale-*`).
+- `playbooks/<subsystem>.yml` — desired state, one file per subsystem; `playbooks/site.yml` imports them all.
+  `make drift` = `site.yml --check --diff`.
+- `playbooks/{optional,ops,archive}/` — alternates, actions, and already-applied one-shots (not in `site.yml`).
+- `runbooks/YYYY-MM-DD-<task>.md` — dated change log (why/how/verify/rollback). Not needed for a rebuild.
+- Every change: edit the subsystem file, apply, log a runbook, commit and push (see `CLAUDE.md`).

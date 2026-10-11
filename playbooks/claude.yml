@@ -1,0 +1,96 @@
+---
+# Claude Code: native install, update, CLI wrappers (homelab/arcana), Arcana 2 directory config.
+
+- name: Claude Code
+  hosts: homelab
+  gather_facts: yes
+
+  vars_files:
+    - ../vars/browser-service.yml   # browser_service_token for the Arcana Claude dir config
+
+  tasks:
+    - name: Remove old npm global Claude installation
+      ansible.builtin.command:
+        cmd: npm -g uninstall @anthropic-ai/claude-code
+        removes: /usr/local/bin/claude
+      become: yes
+      tags: [install, claude]
+
+    - name: Install Claude Code (native installer, user-space)
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://claude.ai/install.sh | bash
+        executable: /bin/bash
+        creates: /home/eslick/.local/bin/claude
+      become: yes
+      become_user: eslick
+      tags: [install, claude]
+
+    - name: Update Claude Code to latest version
+      ansible.builtin.command:
+        cmd: /home/eslick/.local/bin/claude update
+      become: yes
+      become_user: eslick
+      register: claude_update_result
+      changed_when: "'updated to' in claude_update_result.stdout"
+      tags: [configure, claude]
+
+    - name: Deploy homelab CLI wrapper
+      ansible.builtin.copy:
+        dest: /usr/local/bin/homelab
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Launch Claude Code in the homelab repo with auto-approval
+          # Model is set by the directory's .claude/settings.json, not pinned here.
+          cd /home/eslick/homelab
+          # Session label (homelab) via --name; extra args after it can override.
+          exec /home/eslick/.local/bin/claude --name homelab --dangerously-skip-permissions "$@"
+      become: yes
+      tags: [configure, claude]
+
+    - name: Deploy arcana CLI wrapper (Arcana 2 dev session)
+      ansible.builtin.copy:
+        dest: /usr/local/bin/arcana
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Model is set by the directory's .claude/settings.local.json, not pinned here.
+          # Toolchain commands (mix, lean, fstar) run in the container: make dev.check / make dev.shell
+          cd /home/eslick/projects/arcana2
+          # Session label (arcana) via --name; extra args after it can override.
+          exec /home/eslick/.local/bin/claude --name arcana --dangerously-skip-permissions "$@"
+      become: yes
+      tags: [configure, claude]
+
+    - name: Remove old arcana2dev wrapper name
+      ansible.builtin.file:
+        path: /usr/local/bin/arcana2dev
+        state: absent
+      become: yes
+      tags: [configure, claude]
+
+    # settings.local.json (not settings.json) so the arcana2 checkout's git
+    # status stays clean; Claude Code treats it as untracked per-user config.
+
+    - name: Deploy arcana2 Claude directory config
+      ansible.builtin.copy:
+        dest: /home/eslick/projects/arcana2/.claude/settings.local.json
+        owner: eslick
+        group: eslick
+        mode: '0644'
+        content: >-
+          {{ {'model': 'claude-sonnet-5-5',
+              'env': {'BROWSER_SERVICE_TOKEN': browser_service_token}}
+             | to_nice_json(indent=2, sort_keys=False) }}
+      no_log: true            # content embeds the browser-service bearer token
+      tags: [configure, claude]
+
+    - name: Exclude arcana2 local Claude config from git status (local-only, not committed)
+      ansible.builtin.lineinfile:
+        path: /home/eslick/projects/arcana2/.git/info/exclude
+        line: ".claude/settings.local.json"
+        create: yes
+        owner: eslick
+        group: eslick
+        mode: '0644'
+      tags: [configure, claude]

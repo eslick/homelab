@@ -1,0 +1,180 @@
+---
+# Base system: SSH/GitHub key, packages, sudo, time, UFW, fail2ban, avahi.
+# Subsystem file: edit here, not in new dated playbooks. Mail relay is postfix.yml.
+
+- name: Base system
+  hosts: homelab
+  gather_facts: yes
+
+  tasks:
+    - name: Assert GitHub SSH key exists (restore from backup if missing)
+      ansible.builtin.stat:
+        path: /home/eslick/.ssh/id_rsa_git
+      register: github_key
+      tags: [configure, ssh]
+
+    - name: Fail with restore instructions if GitHub SSH key is missing
+      ansible.builtin.fail:
+        msg: >
+          ~/.ssh/id_rsa_git is missing. Restore it from:
+            restic -r /mnt/nas/backups/homelab restore latest --target / --include /home/eslick/.ssh/id_rsa_git
+          Then re-run this playbook.
+      when: not github_key.stat.exists
+      tags: [configure, ssh]
+
+    - name: Configure SSH to use id_rsa_git for GitHub
+      ansible.builtin.copy:
+        dest: /home/eslick/.ssh/config
+        content: |
+          Host github.com
+              IdentityFile ~/.ssh/id_rsa_git
+              IdentitiesOnly yes
+        mode: '0600'
+        owner: eslick
+        group: eslick
+      tags: [configure, ssh]
+
+    - name: Ensure essential packages are installed
+      ansible.builtin.apt:
+        name:
+          - curl
+          - wget
+          - git
+          - htop
+          - unzip
+          - fail2ban
+          - ufw
+          - restic
+          - jq
+          - kitty-terminfo
+          - docker-compose-v2
+          - pandoc
+          - avahi-daemon
+          - libnss-mdns
+          - socat
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install]
+
+    - name: Configure passwordless sudo for eslick
+      ansible.builtin.copy:
+        src: ../files/sudoers-eslick
+        dest: /etc/sudoers.d/eslick
+        mode: '0440'
+        owner: root
+        group: root
+        validate: 'visudo -cf %s'
+      become: yes
+      tags: [configure, security]
+
+    - name: Set timezone to US/Pacific
+      community.general.timezone:
+        name: America/Los_Angeles
+      become: yes
+      tags: [configure]
+
+    - name: Install chrony (replaces systemd-timesyncd for gradual clock slewing)
+      ansible.builtin.apt:
+        name: chrony
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, ntp]
+
+    - name: Disable systemd-timesyncd (conflicts with chrony)
+      ansible.builtin.service:
+        name: systemd-timesyncd
+        state: stopped
+        enabled: no
+      become: yes
+      ignore_errors: yes  # may already be stopped/masked after chrony install
+      tags: [configure, ntp]
+
+    - name: Ensure chrony is running and enabled
+      ansible.builtin.service:
+        name: chrony
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, ntp]
+
+    - name: Allow SSH through UFW
+      ansible.builtin.command: ufw allow OpenSSH
+      become: yes
+      changed_when: true
+      tags: [security]
+
+    - name: Enable UFW
+      ansible.builtin.command: ufw --force enable
+      become: yes
+      changed_when: true
+      tags: [security]
+
+    - name: Ensure Docker is running and enabled
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, docker]
+
+    - name: Ensure fail2ban is running
+      ansible.builtin.service:
+        name: fail2ban
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, security]
+
+    - name: Configure avahi to advertise on LAN interface only
+      ansible.builtin.lineinfile:
+        path: /etc/avahi/avahi-daemon.conf
+        regexp: '^#?allow-interfaces='
+        line: 'allow-interfaces=enp69s0'
+      become: yes
+      notify: Restart avahi
+      tags: [configure, network]
+
+    - name: Ensure avahi-daemon is running (mDNS / .local resolution)
+      ansible.builtin.service:
+        name: avahi-daemon
+        state: started
+        enabled: yes
+      become: yes
+      tags: [service, network]
+
+    - name: Allow mDNS through UFW
+      community.general.ufw:
+        rule: allow
+        port: '5353'
+        proto: udp
+      become: yes
+      tags: [security, network]
+
+    - name: Remove stale UFW rules for retired services
+      community.general.ufw:
+        rule: "{{ item.rule | default('allow') }}"
+        direction: in
+        port: "{{ item.port }}"
+        proto: tcp
+        interface: "{{ item.interface | default(omit) }}"
+        from_ip: "{{ item.src | default(omit) }}"
+        delete: yes
+      loop:
+        - { port: '2099', interface: tailscale0 }
+        - { port: '18789', interface: tailscale0 }
+        - { port: '5984', interface: tailscale0 }
+        - { port: '5984' }
+        - { port: '11434', src: 127.0.0.1 }
+        - { port: '11434', src: 172.18.0.0/16 }
+        - { port: '11434', rule: deny }
+      become: yes
+      tags: [security, cleanup]
+
+  handlers:
+    - name: Restart avahi
+      ansible.builtin.service:
+        name: avahi-daemon
+        state: restarted
+      become: yes

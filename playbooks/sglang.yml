@@ -6,7 +6,7 @@
 #   docker compose -f /opt/compose/vllm/docker-compose.yml down
 # Swap back to vLLM:
 #   docker compose -f /opt/compose/sglang/docker-compose.yml down
-#   ansible-playbook playbooks/vllm.yml --tags docker
+#   ansible-playbook playbooks/optional/vllm.yml --tags docker
 #
 # Model options (override with -e):
 #   Gemma 4 27B:  sglang_model_id=cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  sglang_served_model_name=gemma4-27b   sglang_image=lmsysorg/sglang:gemma4

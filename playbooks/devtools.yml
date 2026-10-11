@@ -1,9 +1,98 @@
 ---
+# Developer tooling: GitHub CLI, MCP Toolbox, Go + sonoscli, Java/Clojure, Elixir (asdf).
+# Play 2 is the former elixir-dev.yml (Erlang compiles from source; first run 20-30 min).
+
+- name: Developer tooling
+  hosts: homelab
+  gather_facts: yes
+
+  tasks:
+    - name: Add/refresh GitHub CLI apt repository key
+      ansible.builtin.get_url:
+        url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+        dest: /usr/share/keyrings/githubcli-archive-keyring.gpg
+        mode: '0644'
+        force: no            # key is stable; re-downloading every run reported a change each time
+      become: yes
+      tags: [install, github]
+
+    - name: Add GitHub CLI apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+        state: present
+        filename: github-cli
+      become: yes
+      tags: [install, github]
+
+    - name: Install GitHub CLI
+      ansible.builtin.apt:
+        name: gh
+        state: present
+        update_cache: yes
+      become: yes
+      tags: [install, github]
+
+    - name: Install MCP Toolbox for Databases (genai-toolbox)
+      ansible.builtin.get_url:
+        url: "https://storage.googleapis.com/genai-toolbox/v0.31.0/linux/amd64/toolbox"
+        dest: /usr/local/bin/toolbox
+        mode: '0755'
+        checksum: "sha256:f709e43f45b899a5c84abdfd1b2082ff5187c4d133c5a824c83411e2fc880e24"
+      become: yes
+      tags: [install, cockroachdb]
+
+    - name: Install Go (required for sonoscli)
+      ansible.builtin.apt:
+        name: golang-go
+        state: present
+      become: yes
+      tags: [install, sonos]
+
+    - name: Install sonoscli
+      ansible.builtin.shell:
+        cmd: go install github.com/steipete/sonoscli/cmd/sonos@latest
+        creates: /home/eslick/go/bin/sonos
+      become: yes
+      become_user: eslick
+      environment:
+        HOME: /home/eslick
+        GOPATH: /home/eslick/go
+      tags: [install, sonos]
+
+    - name: Install OpenJDK 21 JRE
+      ansible.builtin.apt:
+        name: openjdk-21-jre-headless
+        state: present
+        update_cache: no
+      become: yes
+      tags: [install, clojure, java]
+
+    - name: Check whether Clojure CLI is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/clojure
+      register: clojure_bin
+      tags: [install, clojure]
+
+    - name: Download Clojure Linux installer
+      ansible.builtin.get_url:
+        url: https://github.com/clojure/brew-install/releases/latest/download/linux-install.sh
+        dest: /tmp/linux-install-clojure.sh
+        mode: '0755'
+      when: not clojure_bin.stat.exists
+      tags: [install, clojure]
+
+    - name: Install Clojure CLI
+      ansible.builtin.command:
+        cmd: bash /tmp/linux-install-clojure.sh
+        creates: /usr/local/bin/clojure
+      become: yes
+      tags: [install, clojure]
+
 # Installs Elixir/Erlang development tooling for the eslick user via asdf.
 # Erlang is compiled from source — first run takes 20–30 minutes.
 # Re-runs are fast: `creates:` guards skip already-installed versions.
 #
-# Apply:   ansible-playbook playbooks/elixir-dev.yml
+# Apply:   ansible-playbook playbooks/devtools.yml --tags elixir
 # Upgrade: bump erlang_version / elixir_version vars and re-run
 
 - name: Install Elixir development environment

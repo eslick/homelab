@@ -1,6 +1,6 @@
 VAULT := --vault-password-file ~/.vault_pass
 
-.PHONY: backup-credentials upgrade-arcana check-arcana \
+.PHONY: backup-credentials drift \
         sglang-moe sglang-dense sglang-status
 
 # ── Rebuild secrets ───────────────────────────────────────────────────────────
@@ -8,13 +8,9 @@ VAULT := --vault-password-file ~/.vault_pass
 backup-credentials:
 	./scripts/backup-credentials-to-nas.sh
 
-# ── Arcana ────────────────────────────────────────────────────────────────────
-
-upgrade-arcana:
-	ansible-playbook playbooks/upgrade-arcana.yml
-
-check-arcana:
-	ansible-playbook playbooks/upgrade-arcana.yml --check --diff
+# ── Whole-host state ──────────────────────────────────────────────────────────
+drift:
+	ansible-playbook playbooks/site.yml --check --diff
 
 # ── SGLang model switching ────────────────────────────────────────────────────
 # Switches the active model and redeploys SGLang + watcher.

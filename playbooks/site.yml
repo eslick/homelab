@@ -1,0 +1,32 @@
+---
+# Whole-machine desired state. One file per subsystem, imported in dependency order.
+#
+#   ansible-playbook playbooks/site.yml --check --diff     # drift report for the whole host
+#   ansible-playbook playbooks/site.yml                    # reconcile everything (rebuild step 4)
+#   ansible-playbook playbooks/site.yml --tags <tag>       # or limit by the tags on each task
+#   ansible-playbook playbooks/<subsystem>.yml             # or run a single subsystem
+#
+# Convention: a change goes into the subsystem file that owns it (never a new dated playbook).
+# The dated narrative of each change lives in runbooks/. Not imported here:
+#   optional/  alternate/conflicting choices (vllm.yml conflicts with sglang.yml for the GPU)
+#   ops/       actions, not state (system-upgrade.yml reboots the host)
+#   archive/   one-shot retirement/migration playbooks, already applied; kept as history
+
+- import_playbook: base.yml            # SSH/GitHub key, packages, sudo, time, UFW, fail2ban, avahi
+- import_playbook: tailscale.yml       # tailscaled + `tailscale serve`
+- import_playbook: storage.yml         # NAS mount, md0 RAID array
+- import_playbook: gpu.yml             # NVIDIA driver + container toolkit
+- import_playbook: power.yml           # idle power management
+- import_playbook: postfix.yml         # Gmail relay
+- import_playbook: docker.yml          # shared network, YugabyteDB, MinIO
+- import_playbook: nginx.yml           # tailnet TLS reverse proxy + index/overview pages
+- import_playbook: sglang.yml          # LLM inference + lifecycle watcher
+- import_playbook: browser-service.yml
+- import_playbook: homeassistant.yml
+- import_playbook: obsidian-sync.yml
+- import_playbook: syncthing.yml
+- import_playbook: arcana2.yml         # needs ~/projects/arcana2 cloned
+- import_playbook: monitoring.yml      # sensors, mdadm alert, health-check cron
+- import_playbook: devtools.yml
+- import_playbook: claude.yml
+- import_playbook: backup.yml          # restic + 03:00 cron

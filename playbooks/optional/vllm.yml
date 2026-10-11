@@ -48,7 +48,7 @@
 
     - name: Deploy vLLM compose file from template
       ansible.builtin.template:
-        src: ../templates/vllm-compose.yml.j2
+        src: ../../templates/vllm-compose.yml.j2
         dest: "{{ compose_base }}/vllm/docker-compose.yml"
         mode: '0644'
       become: yes
