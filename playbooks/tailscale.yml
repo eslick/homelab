@@ -82,9 +82,9 @@
 # URL: https://speedracer.terrier-haddock.ts.net:8443  ->  http://127.0.0.1:4100
 #
 # Usage:
-#   ansible-playbook playbooks/tailscale.yml --tags serve --check --diff
-#   ansible-playbook playbooks/tailscale.yml --tags serve
-#   ansible-playbook playbooks/tailscale.yml --tags serve -e tailscale_serve_state=absent   # remove the serve
+#   ansible-playbook playbooks/tailscale.yml --check --diff
+#   ansible-playbook playbooks/tailscale.yml
+#   ansible-playbook playbooks/tailscale.yml -e tailscale_serve_state=absent   # remove the serve
 
 - name: Expose Arcana 2 over tailscale serve
   hosts: homelab
