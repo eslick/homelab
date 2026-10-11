@@ -14,6 +14,16 @@
       - /opt/vaults
       - /opt/cache
       - /var/lib/docker/volumes
+      - /var/lib/tailscale          # node identity; without it a rebuild gets a new tailnet name
+    # Re-creatable data: model weights (HF cache) and Arcana/Elixir build caches.
+    backup_excludes:
+      - "*.tmp"
+      - "*.log"
+      - /var/lib/docker/volumes/vllm-models
+      - /var/lib/docker/volumes/vllm_vllm-models
+      - /var/lib/docker/volumes/aa-*
+      - /var/lib/docker/volumes/arcana-dev_arcana-*
+      - /var/lib/docker/volumes/wt-agent_llm_opts-*
 
   tasks:
     - name: Ensure /etc/restic directory
@@ -46,7 +56,7 @@
 
           echo "=== Backup started $(date) ==="
           restic -r {{ restic_nas_repo }} backup {{ backup_paths | join(' ') }} \
-            --exclude="*.tmp" --exclude="*.log" \
+            {% for e in backup_excludes %}--exclude {{ e | quote }} {% endfor %}\
             --tag "$(hostname)" --tag "automated"
           restic -r {{ restic_nas_repo }} forget \
             --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune

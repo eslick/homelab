@@ -1,7 +1,12 @@
 VAULT := --vault-password-file ~/.vault_pass
 
-.PHONY: upgrade-arcana check-arcana \
+.PHONY: backup-credentials upgrade-arcana check-arcana \
         sglang-moe sglang-dense sglang-status
+
+# ── Rebuild secrets ───────────────────────────────────────────────────────────
+# scp the restic + vault passwords to the NAS (outside the restic repo). See README.
+backup-credentials:
+	./scripts/backup-credentials-to-nas.sh
 
 # ── Arcana ────────────────────────────────────────────────────────────────────
 
