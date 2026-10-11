@@ -3,6 +3,9 @@
   hosts: homelab
   gather_facts: yes
 
+  vars_files:
+    - ../vars/browser-service.yml   # browser_service_token for the Arcana Claude dir config
+
   tasks:
     - name: Assert GitHub SSH key exists (restore from backup if missing)
       ansible.builtin.stat:
@@ -252,7 +255,7 @@
         url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
         dest: /usr/share/keyrings/githubcli-archive-keyring.gpg
         mode: '0644'
-        force: yes
+        force: no            # key is stable; re-downloading every run reported a change each time
       become: yes
       tags: [install, github]
 
@@ -367,10 +370,11 @@
         owner: eslick
         group: eslick
         mode: '0644'
-        content: |
-          {
-            "model": "claude-sonnet-5-5"
-          }
+        content: >-
+          {{ {'model': 'claude-sonnet-5-5',
+              'env': {'BROWSER_SERVICE_TOKEN': browser_service_token}}
+             | to_nice_json(indent=2, sort_keys=False) }}
+      no_log: true            # content embeds the browser-service bearer token
       tags: [configure, claude]
 
     - name: Exclude arcana2 local Claude config from git status (local-only, not committed)
@@ -429,11 +433,18 @@
       become: yes
       tags: [install, clojure, java]
 
+    - name: Check whether Clojure CLI is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/clojure
+      register: clojure_bin
+      tags: [install, clojure]
+
     - name: Download Clojure Linux installer
       ansible.builtin.get_url:
         url: https://github.com/clojure/brew-install/releases/latest/download/linux-install.sh
         dest: /tmp/linux-install-clojure.sh
         mode: '0755'
+      when: not clojure_bin.stat.exists
       tags: [install, clojure]
 
     - name: Install Clojure CLI

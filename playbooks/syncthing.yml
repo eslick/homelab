@@ -59,7 +59,7 @@
         state: directory
         owner: "{{ syncthing_user }}"
         group: "{{ syncthing_user }}"
-        mode: '0755'
+        mode: 'u=rwX,g=rX,o=rX'   # X: dirs stay traversable, notes are not made executable
         recurse: yes
       become: yes
       tags: [configure]

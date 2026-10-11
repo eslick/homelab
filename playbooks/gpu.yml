@@ -18,6 +18,7 @@
         url: "{{ cuda_keyring_url }}"
         dest: /tmp/cuda-keyring.deb
         mode: '0644'
+      check_mode: false      # the file is needed by the next task even under --check
       tags: [install, gpu]
 
     - name: Install CUDA keyring package
