@@ -69,6 +69,39 @@ export class Session {
 const ordinaryChromeUa = (version) =>
   `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version.split('.')[0]}.0.0.0 Safari/537.36`;
 
+const bad = (m) => Object.assign(new Error(m), { status: 400 });
+const oneOf = (name, v, allowed) => {
+  if (v == null || v === '') return undefined;
+  if (!allowed.includes(v)) throw bad(`${name} must be one of ${allowed.join('|')}`);
+  return v;
+};
+
+/** Validate per-session browser emulation options (shared by REST and /mcp). Throws a 400 on bad input. */
+export function parseEmulation({ viewport, colorScheme, reducedMotion, deviceScaleFactor, hasTouch }) {
+  let vp;
+  if (typeof viewport === 'string' && viewport) {
+    const m = viewport.match(/^(\d{2,5})x(\d{2,5})$/i);
+    if (!m) throw bad('viewport must look like 1280x800');
+    vp = { width: Number(m[1]), height: Number(m[2]) };
+  } else if (viewport && typeof viewport === 'object') {
+    vp = { width: Number(viewport.width), height: Number(viewport.height) };
+    if (!(vp.width > 0 && vp.height > 0)) throw bad('viewport needs positive width and height');
+  }
+  if (vp && (vp.width > 4096 || vp.height > 4096)) throw bad('viewport too large (max 4096)');
+  const context = {};
+  const cs = oneOf('color_scheme', colorScheme, ['light', 'dark']);
+  const rm = oneOf('reduced_motion', reducedMotion, ['reduce', 'no-preference']);
+  if (cs) context.colorScheme = cs;
+  if (rm) context.reducedMotion = rm;
+  if (deviceScaleFactor != null && deviceScaleFactor !== '') {
+    const d = Number(deviceScaleFactor);
+    if (!(d >= 0.5 && d <= 4)) throw bad('device_scale_factor must be between 0.5 and 4');
+    context.deviceScaleFactor = d;
+  }
+  if (hasTouch != null && hasTouch !== '') context.hasTouch = hasTouch === true || hasTouch === 'true' || hasTouch === '1';
+  return { viewport: vp, context };
+}
+
 class SessionManager {
   constructor() {
     this.sessions = new Map();
@@ -86,7 +119,8 @@ class SessionManager {
     return s;
   }
 
-  async create({ profile, ttlS, label, viewport, login = true, persist = true } = {}) {
+  async create({ profile, ttlS, label, viewport, colorScheme, reducedMotion, deviceScaleFactor, hasTouch, login = true, persist = true } = {}) {
+    const emu = parseEmulation({ viewport, colorScheme, reducedMotion, deviceScaleFactor, hasTouch });
     if (this.sessions.size >= config.maxSessions) {
       throw new Error(`session limit reached (${config.maxSessions}); close one first`);
     }
@@ -112,7 +146,8 @@ class SessionManager {
     try {
       const context = await browser.newContext({
         storageState: profile ? profiles.loadState(profile) : undefined,
-        viewport: viewport ?? { width: 1280, height: 800 },
+        viewport: emu.viewport ?? { width: 1280, height: 800 },
+        ...emu.context,
         acceptDownloads: false,
         serviceWorkers: 'block', // service workers bypass context.route, i.e. the network guard
         permissions: [],

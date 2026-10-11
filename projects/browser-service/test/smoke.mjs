@@ -34,6 +34,11 @@ const fixture = http.createServer((req, res) => {
     });
     return;
   }
+  if (req.url === '/emu')
+    return res.end(`<canvas id=c width=200 height=100 style="display:block"></canvas><iframe id=f src=/inner width=200 height=60></iframe>
+<script>window.ev=[];for(const t of ['mousedown','mouseup','click'])c.addEventListener(t,e=>ev.push(t+':'+e.offsetX+','+e.offsetY));
+c.addEventListener('wheel',e=>ev.push('wheel:'+e.deltaY));</script>`);
+  if (req.url === '/inner') return res.end('<button onclick="document.title=\'clicked\'">Inner</button>');
   if (req.url === '/home')
     return res.end(authed ? '<h1>Welcome</h1><script>console.error("boom")</script><button id=b>Hit</button>' : '<h1>Please sign in</h1>');
   res.writeHead(404).end();
@@ -119,6 +124,44 @@ await client.close();
 await new Promise((r) => setTimeout(r, 1500));
 assert.equal((await api('GET', '/v1/sessions')).body.length, 0, 'MCP disconnect closes its session');
 ok('mcp');
+
+// ---- emulation (viewport, colour scheme) on REST and /mcp; pointer tool; iframe selectors
+{
+  const bad = await api('POST', '/v1/sessions', { color_scheme: 'purple' });
+  assert.equal(bad.status, 400);
+  const e = await api('POST', '/v1/sessions', { viewport: '390x844', color_scheme: 'dark', reduced_motion: 'reduce', has_touch: true });
+  assert.equal(e.status, 201);
+  await tool(e.body.id, 'navigate', { url: 'http://localhost:9911/emu' });
+  const probe = JSON.parse(JSON.parse(textOf(await tool(e.body.id, 'evaluate', { expression: "JSON.stringify({w:innerWidth,dark:matchMedia('(prefers-color-scheme: dark)').matches,rm:matchMedia('(prefers-reduced-motion: reduce)').matches,gl:!!document.createElement('canvas').getContext('webgl2')})" }))));
+  assert.deepEqual([probe.w, probe.dark, probe.rm], [390, true, true]);
+  assert.equal(probe.gl, true, 'webgl2 available');
+  await tool(e.body.id, 'set_color_scheme', { color_scheme: 'light' });
+  assert.match(textOf(await tool(e.body.id, 'evaluate', { expression: "matchMedia('(prefers-color-scheme: dark)').matches" })), /false/);
+  await api('DELETE', `/v1/sessions/${e.body.id}`);
+
+  const ec = new Client({ name: 'emu', version: '0' });
+  const et = new StreamableHTTPClientTransport(new URL(BASE + '/mcp?viewport=390x844&color_scheme=dark'), { requestInit: { headers: { authorization: H.authorization } } });
+  await ec.connect(et);
+  assert.ok((await ec.listTools()).tools.some((t) => t.name === 'pointer'));
+  const call = (name, args) => ec.callTool({ name, arguments: args });
+  await call('navigate', { url: 'http://localhost:9911/emu' });
+  const mp = JSON.parse(JSON.parse((await call('evaluate', { expression: "JSON.stringify({w:innerWidth,dark:matchMedia('(prefers-color-scheme: dark)').matches})" })).content[0].text));
+  assert.deepEqual(mp, { w: 390, dark: true });
+  await call('pointer', { action: 'click', selector: '#c' });
+  await call('pointer', { action: 'click', selector: '#c', offset_x: 10, offset_y: 20 });
+  await call('pointer', { action: 'wheel', selector: '#c', delta_y: 120 });
+  const evs = JSON.parse(JSON.parse((await call('evaluate', { expression: 'JSON.stringify(ev)' })).content[0].text));
+  assert.deepEqual(evs.slice(0, 3), ['mousedown:100,50', 'mouseup:100,50', 'click:100,50']);
+  assert.ok(evs.includes('click:10,20') && evs.includes('wheel:120'), evs.join());
+  await call('click', { selector: '#c', position: { x: 5, y: 6 } });
+  assert.ok(JSON.parse(JSON.parse((await call('evaluate', { expression: 'JSON.stringify(ev)' })).content[0].text)).includes('click:5,6'));
+  const fr = await call('click', { selector: '#f >> internal:control=enter-frame >> button' });
+  assert.ok(!fr.isError, JSON.stringify(fr));
+  await et.terminateSession();
+  await ec.close();
+  await new Promise((r) => setTimeout(r, 1500));
+}
+ok('viewport/colour scheme/pointer/iframe');
 
 // ---- identity: looks like an ordinary browser
 r = await api('POST', '/v1/sessions', { profile: 'manual' });

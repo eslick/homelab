@@ -71,7 +71,7 @@ async function route(req, res) {
   if (p === '/v1/sessions' && m === 'GET') return send(res, 200, manager.list());
   if (p === '/v1/sessions' && m === 'POST') {
     const b = (await readJson(req)) ?? {};
-    const s = await manager.create({ profile: b.profile, ttlS: b.ttl_s, label: b.label, viewport: b.viewport, login: b.login ?? true, persist: b.persist ?? true });
+    const s = await manager.create({ profile: b.profile, ttlS: b.ttl_s, label: b.label, viewport: b.viewport, colorScheme: b.color_scheme, reducedMotion: b.reduced_motion, deviceScaleFactor: b.device_scale_factor, hasTouch: b.has_touch, login: b.login ?? true, persist: b.persist ?? true });
     return send(res, 201, s.info());
   }
   if ((g = p.match(/^\/v1\/sessions\/([0-9a-f]+)$/))) {

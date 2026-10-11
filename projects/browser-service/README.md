@@ -32,7 +32,8 @@ GET    /v1/tools                          tool names, descriptions, JSON schemas
 GET    /v1/profiles                       profiles (no secrets): has_credentials, has_saved_state, allowed_hosts
 PUT    /v1/profiles/:id/state             upload a Playwright storageState (see scripts/capture-state.mjs)
 DELETE /v1/profiles/:id/state             forget the saved login
-POST   /v1/sessions   {profile?, ttl_s?, label?, login?: true, persist?: true, viewport?: {width,height}}
+POST   /v1/sessions   {profile?, ttl_s?, label?, login?: true, persist?: true, viewport?: "WxH"|{width,height},
+                      color_scheme?: light|dark, reduced_motion?: reduce|no-preference, device_scale_factor?: 0.5-4, has_touch?: bool}
 GET    /v1/sessions[/:id]                 list / inspect
 DELETE /v1/sessions/:id                   close (saves profile state)
 POST   /v1/sessions/:id/tools/:name       body = tool arguments → {"content":[{"type":"text"|"image",...}]}
@@ -43,13 +44,22 @@ Errors are `{"error": "..."}` with 400 (bad args), 401, 404, 500 (tool failure, 
 Streamable HTTP at `/mcp`. A browser session is created lazily on the first tool call and closed on
 disconnect (clients that just drop the connection are reaped after 10 idle minutes), or via `close_session`.
 Query parameters on the URL: `profile=<id>` (use that profile), `session=<id>` (attach to a REST-created
-session instead of creating one), `ttl_s=<n>`.
+session instead of creating one), `ttl_s=<n>`, and the emulation options for the session it creates (ignored with `session=`):
+`viewport=390x844` (default 1280x800), `color_scheme=light|dark`, `reduced_motion=reduce|no-preference`,
+`device_scale_factor=2`, `has_touch=true`. Invalid values are rejected with 400 at initialize.
 
 ### Tools
-`navigate snapshot click fill press hover select_option wait_for screenshot get_text get_html evaluate
+`navigate snapshot click pointer set_color_scheme fill press hover select_option wait_for screenshot get_text get_html evaluate
 console_messages network_log tabs login request_human await_human session_info close_session`. `snapshot` returns an accessibility
 tree with `[ref=…]` handles that `click`/`fill`/etc. accept; prefer it to screenshots. `console_messages`
 and `network_log` are the debugging tools (JS errors, failed/4xx/5xx requests, requests the policy blocked).
+
+`click` takes an optional `position {x,y}` relative to the element's top-left. `pointer` drives `page.mouse` for canvas
+content: `action` = click|dblclick|move|down|up|wheel, aimed at page `x`/`y` or at a `ref`/`selector` plus
+`offset_x`/`offset_y` (default centre); `button`, `delta_x`/`delta_y` for wheel. A drag is move, down, move, up.
+`set_color_scheme` flips `prefers-color-scheme`/`prefers-reduced-motion` mid-session. Elements inside iframes are reachable with
+chained selectors, e.g. `#f >> internal:control=enter-frame >> button`. `allowed_hosts` limits top-level navigation only;
+subresources (map tiles, CDNs) to public hosts are allowed, private ranges stay blocked.
 
 ## Profiles and auto-login
 
@@ -120,8 +130,8 @@ Sessions come and go through the API; the container only has to be up.
 
 ## Testing
 
-`test/smoke.mjs` drives a fixture login site through REST and MCP (18 checks: auth, secret-free listing, auto-login,
-saved state reuse, allowlist, private-range blocking, session cap, MCP lifecycle, browser identity, and the full human handoff:
+`test/smoke.mjs` drives a fixture login site through REST and MCP (19 checks: auth, secret-free listing, auto-login,
+saved state reuse, allowlist, private-range blocking, session cap, MCP lifecycle, viewport/colour-scheme/pointer/iframe, browser identity, and the full human handoff:
 link security, screencast frames, mouse/key/paste input through the live view, state capture, cleanup). It runs inside the container:
 
 ```

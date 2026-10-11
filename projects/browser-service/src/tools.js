@@ -46,11 +46,64 @@ export const tools = [
   {
     name: 'click',
     description: 'Click an element.',
-    schema: { ...target, double: z.boolean().default(false), button: z.enum(['left', 'right', 'middle']).default('left') },
+    schema: {
+      ...target,
+      double: z.boolean().default(false),
+      button: z.enum(['left', 'right', 'middle']).default('left'),
+      position: z.object({ x: z.number(), y: z.number() }).optional().describe('Click point relative to the element top-left (default: centre)'),
+    },
     run: async (s, a) => {
       const l = loc(s.page, a);
-      await (a.double ? l.dblclick({ timeout: TIMEOUT, button: a.button }) : l.click({ timeout: TIMEOUT, button: a.button }));
+      const o = { timeout: TIMEOUT, button: a.button, position: a.position };
+      await (a.double ? l.dblclick(o) : l.click(o));
       return text(await status(s.page));
+    },
+  },
+  {
+    name: 'pointer',
+    description: 'Low-level mouse input via page.mouse, for canvas content that selectors cannot address. Give page coordinates x/y, or ref/selector (+ offset_x/offset_y from the element top-left, default centre). A drag is move, down, move, up. wheel scrolls at the pointer (or at the target when given).',
+    schema: {
+      action: z.enum(['click', 'dblclick', 'move', 'down', 'up', 'wheel']),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      ...target,
+      offset_x: z.number().optional(),
+      offset_y: z.number().optional(),
+      button: z.enum(['left', 'right', 'middle']).default('left'),
+      delta_x: z.number().default(0),
+      delta_y: z.number().default(0),
+    },
+    run: async (s, a) => {
+      const m = s.page.mouse;
+      let pt;
+      if (a.ref || a.selector) {
+        const l = loc(s.page, a);
+        await l.scrollIntoViewIfNeeded({ timeout: TIMEOUT });
+        const b = await l.boundingBox({ timeout: TIMEOUT });
+        if (!b) throw new Error('element has no bounding box');
+        pt = { x: b.x + (a.offset_x ?? b.width / 2), y: b.y + (a.offset_y ?? b.height / 2) };
+      } else if (a.x != null && a.y != null) {
+        pt = { x: a.x, y: a.y };
+      } else if (!['up', 'down', 'wheel'].includes(a.action)) {
+        throw new Error('x and y, or ref/selector, is required');
+      }
+      if (pt) await m.move(pt.x, pt.y);
+      const { button } = a;
+      if (a.action === 'click') await m.click(pt.x, pt.y, { button });
+      else if (a.action === 'dblclick') await m.dblclick(pt.x, pt.y, { button });
+      else if (a.action === 'down') await m.down({ button });
+      else if (a.action === 'up') await m.up({ button });
+      else if (a.action === 'wheel') await m.wheel(a.delta_x, a.delta_y);
+      return text(pt ? `${a.action} at ${Math.round(pt.x)},${Math.round(pt.y)}` : a.action);
+    },
+  },
+  {
+    name: 'set_color_scheme',
+    description: 'Change the emulated prefers-color-scheme (light|dark) and/or prefers-reduced-motion of the current tab.',
+    schema: { color_scheme: z.enum(['light', 'dark']).optional(), reduced_motion: z.enum(['reduce', 'no-preference']).optional() },
+    run: async (s, a) => {
+      await s.page.emulateMedia({ colorScheme: a.color_scheme, reducedMotion: a.reduced_motion });
+      return text('ok');
     },
   },
   {

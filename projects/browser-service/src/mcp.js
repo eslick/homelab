@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { audit } from './audit.js';
-import { manager } from './sessions.js';
+import { manager, parseEmulation } from './sessions.js';
 import { runTool, tools } from './tools.js';
 
 const INSTRUCTIONS = `Headless Chromium on the homelab. A browser session is created on your first tool call and closed when this MCP connection ends (or call close_session).
@@ -18,7 +18,7 @@ function buildServer(params) {
   let owned = null; // browser session we created for this MCP connection
   const getSession = async () => {
     if (params.session) return manager.get(params.session); // attach to an existing session, not owned
-    owned ??= await manager.create({ profile: params.profile, ttlS: params.ttlS ?? MCP_IDLE_TTL_S, label: 'mcp' });
+    owned ??= await manager.create({ profile: params.profile, ttlS: params.ttlS ?? MCP_IDLE_TTL_S, label: 'mcp', ...params.emulation });
     return owned;
   };
   const server = new McpServer({ name: 'browser-service', version: '0.1.0' }, { instructions: INSTRUCTIONS });
@@ -44,10 +44,24 @@ export async function handleMcp(req, res, body, url) {
       return res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: sid ? 'unknown session' : 'initialize first' }, id: null }));
     }
     const q = url.searchParams;
+    try {
+      // fail the initialize request up front rather than on the first tool call
+      parseEmulation({ viewport: q.get('viewport') || undefined, colorScheme: q.get('color_scheme') || undefined, reducedMotion: q.get('reduced_motion') || undefined, deviceScaleFactor: q.get('device_scale_factor') || undefined, hasTouch: q.get('has_touch') || undefined });
+    } catch (e) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32602, message: e.message }, id: null }));
+    }
     const { server, release } = buildServer({
       profile: q.get('profile') || undefined,
       session: q.get('session') || undefined,
       ttlS: q.get('ttl_s') ? Number(q.get('ttl_s')) : undefined,
+      emulation: {
+        viewport: q.get('viewport') || undefined,
+        colorScheme: q.get('color_scheme') || undefined,
+        reducedMotion: q.get('reduced_motion') || undefined,
+        deviceScaleFactor: q.get('device_scale_factor') || undefined,
+        hasTouch: q.get('has_touch') || undefined,
+      },
     });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
