@@ -114,7 +114,10 @@ identity lives in `/home/eslick/.local/share/syncthing`, restored with `/home`):
    if the Mac vault should win; otherwise differences become `.sync-conflict` files.
 5. Server UI via `ssh -L 8385:127.0.0.1:8384 speedracer.terrier-haddock.ts.net` → `http://127.0.0.1:8385`:
    accept the folder at `/opt/vaults/obsidian`.
-6. `.stignore` on both sides: `.obsidian/workspace*.json` and `.obsidian/cache`.
+6. `.stignore`: the server copy is deployed by `syncthing.yml`. `.stignore` is per-device, so create the same file
+   by hand at the Mac vault root (copy the content from the `Deploy vault .stignore` task in `playbooks/syncthing.yml`).
+   A reinstalled Mac gets a new Syncthing ID: add the new ID on the server (`syncthing cli config devices add ...`,
+   `... folders <id> devices add ...`) and remove the stale one.
 
 The old CouchDB/LiveSync design is retired (`runbooks/2026-04-04-obsidian-livesync-writeback.md` is history only).
 

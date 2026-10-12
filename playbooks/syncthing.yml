@@ -10,7 +10,7 @@
 #   5. Share the vault folder to the Linux device (Mac folder Send Only until first sync is done
 #      if the Mac vault is the source of truth)
 #   6. On Linux web UI (http://127.0.0.1:8384 via SSH tunnel): accept folder, path /opt/vaults/obsidian
-#   7. Add .stignore on both sides: .obsidian/workspace*.json and .obsidian/cache
+#   7. Server .stignore is deployed below; create the same file by hand in the Mac vault (see README)
 #
 # SSH tunnel to Linux web UI:
 #   ssh -L 8385:127.0.0.1:8384 speedracer.terrier-haddock.ts.net
@@ -63,6 +63,30 @@
         group: "{{ syncthing_user }}"
         mode: 'u=rwX,g=rX,o=rX'   # X: dirs stay traversable, notes are not made executable
         recurse: yes
+      become: yes
+      tags: [configure]
+
+    - name: Deploy vault .stignore (Obsidian UI state and OS junk; not synced between devices)
+      ansible.builtin.copy:
+        dest: "{{ vault_path }}/.stignore"
+        owner: "{{ syncthing_user }}"
+        group: "{{ syncthing_user }}"
+        mode: '0644'
+        content: |
+          // Managed by Ansible (playbooks/syncthing.yml). .stignore is per-device: the Mac has its own copy.
+          // Obsidian UI state: rewritten constantly, differs per device
+          .obsidian/workspace.json
+          .obsidian/workspace-mobile.json
+          .obsidian/cache
+
+          // OS junk; (?d) lets Syncthing delete it if it blocks removing a folder
+          (?d).DS_Store
+          (?d)Thumbs.db
+          (?d).Trash-*
+
+          // Syncthing's own temp files
+          *.tmp
+          ~syncthing~*
       become: yes
       tags: [configure]
 
