@@ -97,10 +97,26 @@ Models re-download from Hugging Face on first inference. Not in `site.yml`: `opt
 (alternate to SGLang, they share the GPU), `ops/system-upgrade.yml` (reboots), `archive/` (history).
 Do not replay `archive/`, and ignore pre-2026-10 runbooks about CockroachDB, Datomic, homedev, AgentOS, OpenClaw.
 
-Manual steps Ansible cannot do (so no runbook is needed): `tailscale up` login; re-authorizing Google
+Manual steps Ansible cannot do (so no runbook is needed): `tailscale up` login; Obsidian vault pairing
+(below); re-authorizing Google
 Workspace MCP if `/opt/secrets/google` is lost; the md0 array; Discord webhook/user id in the vault if the
 browser-service notifications are wanted; the browser-service token lives in `~/.ssh/browser-service-token`
 (generated on first use, restored with `/home`).
+
+#### Obsidian vault sync (Syncthing, server ↔ MacBook)
+`syncthing.yml` installs Syncthing and shares `/opt/vaults/obsidian` (port 22000 open on `tailscale0` only).
+Device pairing is manual, and needed again on any new Mac or a fresh server identity (the server's Syncthing
+identity lives in `/home/eslick/.local/share/syncthing`, restored with `/home`):
+1. Mac: install Tailscale and sign in to the same tailnet; `brew install syncthing && brew services start syncthing`.
+2. Server device ID: `syncthing --device-id` (also printed by `syncthing.yml`).
+3. Mac UI `http://127.0.0.1:8384` → Add Remote Device with that ID, address `tcp://speedracer.terrier-haddock.ts.net:22000`.
+4. Share the Mac vault folder to the server. Set the Mac folder to Send Only until the first sync finishes
+   if the Mac vault should win; otherwise differences become `.sync-conflict` files.
+5. Server UI via `ssh -L 8385:127.0.0.1:8384 speedracer.terrier-haddock.ts.net` → `http://127.0.0.1:8385`:
+   accept the folder at `/opt/vaults/obsidian`.
+6. `.stignore` on both sides: `.obsidian/workspace*.json` and `.obsidian/cache`.
+
+The old CouchDB/LiveSync design is retired (`runbooks/2026-04-04-obsidian-livesync-writeback.md` is history only).
 
 ### 5. Verify
 - `docker ps` all running/healthy; `systemctl --failed` empty.

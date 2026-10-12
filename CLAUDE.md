@@ -15,7 +15,7 @@ Never run `sudo apt install`, `sudo systemctl enable`, or any direct mutation.
 ## Repository Model: state files + a change log
 - `playbooks/*.yml` — **one file per subsystem**, each describing the *current desired state*
   (base, tailscale, storage, gpu, power, postfix, docker, nginx, sglang, browser-service,
-  homeassistant, obsidian-sync, syncthing, arcana2, monitoring, devtools, claude, backup).
+  homeassistant, syncthing (Obsidian vault), arcana2, monitoring, devtools, claude, backup).
   `playbooks/site.yml` imports them in dependency order and is the whole-machine state.
 - `runbooks/YYYY-MM-DD-<task>.md` — the **time-indexed log** of what changed and why. Append-only history.
 - **Never add a new dated or one-off playbook for a change.** Edit the subsystem file that owns the

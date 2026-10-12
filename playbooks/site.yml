@@ -23,8 +23,7 @@
 - import_playbook: sglang.yml          # LLM inference + lifecycle watcher
 - import_playbook: browser-service.yml
 - import_playbook: homeassistant.yml
-- import_playbook: obsidian-sync.yml
-- import_playbook: syncthing.yml
+- import_playbook: syncthing.yml          # Obsidian vault sync (+ retired LiveSync cleanup)
 - import_playbook: arcana2.yml         # needs ~/projects/arcana2 cloned
 - import_playbook: monitoring.yml      # sensors, mdadm alert, health-check cron
 - import_playbook: devtools.yml

@@ -1,14 +1,16 @@
 ---
-# Installs and configures Syncthing to sync the Obsidian vault
-# between speedracer and the MacBook over Tailscale.
+# Owns the Obsidian vault (/opt/vaults/obsidian): Syncthing syncs it between speedracer and
+# the MacBook over Tailscale. Also retires the old CouchDB/LiveSync sync services.
 #
-# After running this playbook:
+# Manual pairing (Ansible cannot do this; also in README "Full rebuild"):
 #   1. Get Linux device ID:  syncthing --device-id (or see web UI)
-#   2. On Mac: brew install syncthing && brew services start syncthing
+#   2. On Mac: install Tailscale, then brew install syncthing && brew services start syncthing
 #   3. Open Mac Syncthing UI at http://127.0.0.1:8384
-#   4. Add remote device using Linux device ID
-#   5. Share the vault folder to the Linux device
-#   6. On Linux web UI (http://127.0.0.1:8384 via SSH tunnel): accept folder
+#   4. Add remote device using Linux device ID (address tcp://speedracer.terrier-haddock.ts.net:22000)
+#   5. Share the vault folder to the Linux device (Mac folder Send Only until first sync is done
+#      if the Mac vault is the source of truth)
+#   6. On Linux web UI (http://127.0.0.1:8384 via SSH tunnel): accept folder, path /opt/vaults/obsidian
+#   7. Add .stignore on both sides: .obsidian/workspace*.json and .obsidian/cache
 #
 # SSH tunnel to Linux web UI:
 #   ssh -L 8385:127.0.0.1:8384 speedracer.terrier-haddock.ts.net
@@ -100,3 +102,51 @@
           Web UI (via SSH tunnel): ssh -L 8385:127.0.0.1:8384 speedracer.terrier-haddock.ts.net
           Then open: http://127.0.0.1:8385
       tags: [configure]
+
+    # --- Retired: Obsidian LiveSync (CouchDB) sync, replaced by Syncthing ---
+    # Data is NOT removed: /opt/compose/obsidian-couchdb and the docker volume
+    # obsidian-couchdb_couchdb-data are left in place pending an explicit decision.
+    # The vault itself (/opt/vaults/obsidian) is now owned by Syncthing; never remove it.
+
+    - name: Stop and disable retired LiveSync services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: no
+        state: stopped
+      loop:
+        - obsidian-vault-writeback
+        - obsidian-sync
+      become: yes
+      failed_when: false
+      when: not ansible_check_mode
+      tags: [service, retire]
+
+    - name: Remove retired LiveSync cron job
+      ansible.builtin.cron:
+        name: obsidian-vault-full-sync
+        user: root
+        state: absent
+      become: yes
+      tags: [cron, retire]
+
+    - name: Remove retired LiveSync units and scripts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/obsidian-sync.service
+        - /etc/systemd/system/obsidian-vault-writeback.service
+        - /opt/scripts/obsidian-sync.py
+        - /opt/scripts/obsidian-sync.service
+        - /opt/scripts/obsidian-vault-writeback.service
+        - /opt/obsidian
+      become: yes
+      register: livesync_units
+      tags: [configure, retire]
+
+    - name: Reload systemd after removing LiveSync units
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      become: yes
+      when: livesync_units is changed and not ansible_check_mode
+      tags: [service, retire]
