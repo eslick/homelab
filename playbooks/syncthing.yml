@@ -104,8 +104,8 @@
       tags: [configure]
 
     # --- Retired: Obsidian LiveSync (CouchDB) sync, replaced by Syncthing ---
-    # Data is NOT removed: /opt/compose/obsidian-couchdb and the docker volume
-    # obsidian-couchdb_couchdb-data are left in place pending an explicit decision.
+    # The CouchDB container, its volume and compose dir were deleted 2026-10-12 (user-approved;
+    # restic snapshot of 2026-10-12 03:00 still holds the volume).
     # The vault itself (/opt/vaults/obsidian) is now owned by Syncthing; never remove it.
 
     - name: Stop and disable retired LiveSync services
@@ -150,3 +150,26 @@
       become: yes
       when: livesync_units is changed and not ansible_check_mode
       tags: [service, retire]
+
+    - name: Check for retired CouchDB compose project
+      ansible.builtin.stat:
+        path: /opt/compose/obsidian-couchdb/docker-compose.yml
+      register: couchdb_compose
+      become: yes
+      tags: [docker, retire]
+
+    - name: Remove retired CouchDB container and volume
+      community.docker.docker_compose_v2:
+        project_src: /opt/compose/obsidian-couchdb
+        state: absent
+        remove_volumes: yes
+      become: yes
+      when: couchdb_compose.stat.exists
+      tags: [docker, retire]
+
+    - name: Remove retired CouchDB compose directory
+      ansible.builtin.file:
+        path: /opt/compose/obsidian-couchdb
+        state: absent
+      become: yes
+      tags: [configure, retire]

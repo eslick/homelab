@@ -29,3 +29,10 @@ the CouchDB stack too, see below). Not recommended.
 contains the CouchDB admin password in its compose file). Not referenced by any playbook. Remove with a
 `state: absent` task once confirmed unneeded; the volume is covered by the restic backup.
 `vault_couchdb_admin_*` vars remain in the ansible vault, unused.
+
+## Update: CouchDB data deleted (user-approved)
+`syncthing.yml` (tag `retire`) now runs `docker_compose_v2 state: absent remove_volumes: yes` and removes
+`/opt/compose/obsidian-couchdb`; `vault_couchdb_admin_*` removed from `group_vars/all.yml`. Verified: no
+`obsidian-couchdb_couchdb-data` volume, `/opt/compose` lacks the dir. Recovery: the restic snapshot of
+2026-10-12 03:00 still contains `/var/lib/docker/volumes/obsidian-couchdb_couchdb-data`.
+The "Left in place" section above is therefore obsolete.
