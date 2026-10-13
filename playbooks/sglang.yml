@@ -1,22 +1,17 @@
 ---
-# Deploys SGLang inference server as an alternative to vLLM.
+# SGLang container for the MoE model (Qwen3.6-35B-A3B). Created but NOT started: the llm-gateway
+# (playbooks/llm-gateway.yml) starts it on demand and stops the other inference container
+# (vllm-dense, playbooks/vllm.yml), because each claims both 3090s (TP=2).
+# Not published on a host port; the gateway reaches it at http://sglang:30000 over homelab-net.
 #
-# IMPORTANT: SGLang and vLLM both claim all GPUs (count: all).
-# Stop vLLM before starting SGLang:
-#   docker compose -f /opt/compose/vllm/docker-compose.yml down
-# Swap back to vLLM:
-#   docker compose -f /opt/compose/sglang/docker-compose.yml down
-#   ansible-playbook playbooks/optional/vllm.yml --tags docker
+# The dense Qwen3.6-27B-AWQ produces "!" spam on SGLang (vars/sglang-qwen3-dense.yml); it runs on vLLM.
 #
-# Model options (override with -e):
-#   Gemma 4 27B:  sglang_model_id=cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  sglang_served_model_name=gemma4-27b   sglang_image=lmsysorg/sglang:gemma4
-#   Qwen3.6-35B:  sglang_model_id=Qwen/Qwen3.6-35B-A3B-AWQ               sglang_served_model_name=qwen3.6-35b-a3b  sglang_image=lmsysorg/sglang:latest
-#   Qwen3-30B:    sglang_model_id=QuixiAI/Qwen3-30B-A3B-AWQ             sglang_served_model_name=qwen3-30b-a3b    sglang_image=lmsysorg/sglang:v0.5.10.post1
+# Model options (override with -e or -e @vars/<file>.yml):
+#   Qwen3.6-35B: sglang_model_id=Qwen/Qwen3.6-35B-A3B-AWQ   sglang_served_model_name=qwen3.6-35b-a3b  sglang_image=lmsysorg/sglang:latest
+#   Gemma 4 27B: sglang_model_id=cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit  sglang_served_model_name=gemma4-27b  sglang_image=lmsysorg/sglang:gemma4
+# A different served name needs a matching entry in llm_models (playbooks/llm-gateway.yml).
 #
-# VRAM budget (2× RTX 3090, 24 GB each, TP=2):
-#   Gemma 4 26B AWQ-4bit weights: ~14-16 GB total (~7-8 GB/card), ~16-17 GB/card for KV cache.
-#   fp8_e4m3 KV cache: effective ~32 GB KV budget across both cards.
-#   context-length=65536 is conservative; probe-context mode finds the true ceiling.
+# VRAM budget (2× RTX 3090, 24 GB each, TP=2): see docs/inference-config-summary.md.
 
 - name: Deploy SGLang GPU container
   hosts: homelab
@@ -26,9 +21,7 @@
     compose_base: /opt/compose
     docker_network: homelab-net
 
-    sglang_port: 8081
     sglang_image: "sglang-base:working"
-    # Default: MoE profile — dense (qwen3-dense.yml) is not working
     sglang_model_id: "QuantTrio/Qwen3.6-35B-A3B-AWQ"
     sglang_served_model_name: "qwen3.6-35b-a3b"
     sglang_tensor_parallel_size: 2
@@ -45,14 +38,6 @@
     sglang_json_model_override_args: '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
 
   tasks:
-
-    - name: Ensure vLLM is stopped (SGLang needs exclusive GPU access)
-      community.docker.docker_compose_v2:
-        project_src: "{{ compose_base }}/vllm"
-        state: absent
-      become: yes
-      ignore_errors: yes  # vLLM may not be deployed
-      tags: [docker, sglang]
 
     - name: Create SGLang compose directory
       ansible.builtin.file:
@@ -77,14 +62,6 @@
       become: yes
       tags: [docker, sglang]
 
-    - name: Build sglang-watcher image
-      ansible.builtin.command:
-        cmd: docker compose -f {{ compose_base }}/sglang/docker-compose.yml build sglang-watcher
-      become: yes
-      register: watcher_build
-      changed_when: "'writing image' in watcher_build.stdout"
-      tags: [docker, sglang]
-
     - name: Stop and remove SGLang container to apply new config (no port binding)
       ansible.builtin.command:
         cmd: docker compose -f {{ compose_base }}/sglang/docker-compose.yml rm -sf sglang
@@ -92,46 +69,10 @@
       ignore_errors: yes  # ok if container doesn't exist
       tags: [docker, sglang]
 
-    - name: Pre-create SGLang container from new config (watcher will start it on demand)
+    - name: Pre-create SGLang container from new config (llm-gateway starts it on demand)
       ansible.builtin.command:
         cmd: docker compose -f {{ compose_base }}/sglang/docker-compose.yml create sglang
       become: yes
       register: sglang_create
-      changed_when: "'Created' in sglang_create.stdout"
+      changed_when: "'Created' in sglang_create.stdout or 'Created' in sglang_create.stderr"
       tags: [docker, sglang]
-
-    - name: Start sglang-watcher (watcher manages SGLang lifecycle on demand)
-      ansible.builtin.command:
-        cmd: >
-          docker compose -f {{ compose_base }}/sglang/docker-compose.yml
-          up -d --no-deps sglang-watcher
-      become: yes
-      register: watcher_up
-      changed_when: "'Started' in watcher_up.stdout or 'Created' in watcher_up.stdout"
-      tags: [docker, sglang]
-
-    - name: Allow SGLang port from localhost
-      community.general.ufw:
-        rule: allow
-        port: "{{ sglang_port }}"
-        proto: tcp
-        from_ip: 127.0.0.1
-      become: yes
-      tags: [security, sglang]
-
-    - name: Allow SGLang port from Docker bridge subnet
-      community.general.ufw:
-        rule: allow
-        port: "{{ sglang_port }}"
-        proto: tcp
-        from_ip: "{{ docker_network_subnet | default('172.18.0.0/16') }}"
-      become: yes
-      tags: [security, sglang]
-
-    - name: Deny SGLang port from everywhere else
-      community.general.ufw:
-        rule: deny
-        port: "{{ sglang_port }}"
-        proto: tcp
-      become: yes
-      tags: [security, sglang]

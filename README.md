@@ -93,8 +93,10 @@ order). Clone Arcana first (`git clone https://github.com/eslick/arcana2 ~/proje
 ansible-playbook playbooks/site.yml --check --diff   # review
 ansible-playbook playbooks/site.yml
 ```
-Models re-download from Hugging Face on first inference. Not in `site.yml`: `optional/vllm.yml`
-(alternate to SGLang, they share the GPU), `ops/system-upgrade.yml` (reboots), `archive/` (history).
+Models re-download from Hugging Face on first inference. Local LLM: `sglang.yml` (MoE) and `vllm.yml`
+(dense) only *create* their containers; `llm-gateway.yml` starts one on demand, stops the other, and answers
+503 + `Retry-After` for a model while the other is busy (`curl localhost:8081/gateway/status`).
+Not in `site.yml`: `ops/system-upgrade.yml` (reboots), `archive/` (history).
 Do not replay `archive/`, and ignore pre-2026-10 runbooks about CockroachDB, Datomic, homedev, AgentOS, OpenClaw.
 
 Manual steps Ansible cannot do (so no runbook is needed): `tailscale up` login; Obsidian vault pairing

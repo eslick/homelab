@@ -2,7 +2,7 @@ services:
   sglang:
     image: "{{ sglang_image }}"
     container_name: sglang
-    # No host port binding — watcher proxies via Docker network (http://sglang:30000)
+    # No host port binding — the llm-gateway proxies via Docker network (http://sglang:30000)
     environment:
       - HF_TOKEN={{ hugging_face_token }}
       - HUGGING_FACE_HUB_TOKEN={{ hugging_face_token }}
@@ -19,7 +19,7 @@ services:
 {% endif %}
       --host 0.0.0.0 --port 30000
     volumes:
-      - vllm-models:/root/.cache/huggingface  # share HF cache with vLLM to avoid re-downloading
+      - vllm-models:/root/.cache/huggingface  # shared HF cache with vllm-dense
 {% if sglang_awq_patch | default(false) %}
       - /opt/sglang-patches/awq.py:/sgl-workspace/sglang/python/sglang/srt/layers/quantization/awq.py:ro
       - /opt/sglang-patches/causal_conv1d_triton.py:/sgl-workspace/sglang/python/sglang/srt/layers/attention/mamba/causal_conv1d_triton.py:ro
@@ -27,7 +27,7 @@ services:
     networks:
       - {{ docker_network }}
     shm_size: "4g"
-    restart: "no"  # watcher manages lifecycle; do not auto-restart
+    restart: "no"  # llm-gateway manages lifecycle; do not auto-restart
     deploy:
       resources:
         reservations:
@@ -42,30 +42,9 @@ services:
       retries: 10
       start_period: 300s
 
-  sglang-watcher:
-    build:
-      context: /home/eslick/homelab/projects/sglang-watcher
-      dockerfile: Dockerfile
-    image: sglang-watcher:local
-    container_name: sglang-watcher
-    ports:
-      - "127.0.0.1:{{ sglang_port }}:8080"
-    environment:
-      SGLANG_URL: "http://sglang:30000"
-      SGLANG_CONTAINER: "sglang"
-      IDLE_TIMEOUT_SECONDS: "{{ sglang_idle_timeout | default(300) }}"
-      STARTUP_TIMEOUT_SECONDS: "{{ sglang_startup_timeout | default(600) }}"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - {{ docker_network }}
-    restart: unless-stopped
-    depends_on:
-      - sglang
-
 volumes:
   vllm-models:
-    external: true  # shared with vLLM container
+    external: true  # shared with vllm-dense
 
 networks:
   {{ docker_network }}:

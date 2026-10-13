@@ -28,8 +28,8 @@ sglang-dense:
 	ansible-playbook playbooks/sglang.yml $(VAULT) -e @vars/sglang-qwen3-dense.yml
 
 sglang-status:
-	@echo "=== Watcher status ==="
-	@curl -s http://localhost:8081/watcher/status | python3 -m json.tool
+	@echo "=== Gateway status ==="
+	@curl -s http://localhost:8081/gateway/status | python3 -m json.tool
 	@echo ""
 	@echo "=== Running containers ==="
 	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | grep -E "sglang|NAMES"

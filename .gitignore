@@ -7,5 +7,5 @@ credentials.json
 __pycache__/
 health-reports/   # optional: comment out if you want reports in git
 projects/*
-!projects/sglang-watcher/
+!projects/llm-gateway/
 !projects/browser-service/

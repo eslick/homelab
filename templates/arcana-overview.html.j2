@@ -450,7 +450,7 @@
   <rect class="zone" x="16" y="324" width="1030" height="84" rx="10"/>
   <text class="z" x="560" y="342">Lib.LLM profiles (operator-owned)</text>
   <rect class="node k-app" x="30" y="352" width="190" height="46" rx="6"/><text class="t" x="42" y="372">profile: anthropic</text><text class="m" x="42" y="389">remote · Claude API</text>
-  <rect class="node k-gpu" x="250" y="352" width="250" height="46" rx="6"/><text class="t" x="262" y="372">profile: homelab</text><text class="m" x="262" y="389">local · sglang-watcher:8080 · no auth</text>
+  <rect class="node k-gpu" x="250" y="352" width="250" height="46" rx="6"/><text class="t" x="262" y="372">profile: homelab</text><text class="m" x="262" y="389">local · llm-gateway:8080 · no auth</text>
   <rect class="node k-ext" x="530" y="352" width="250" height="46" rx="6"/><text class="t" x="542" y="372">fallback: local → remote</text><text class="m" x="542" y="389">only after exhausted transient errors</text>
   <path class="edge" d="M528 130V300H125V352" style="stroke-dasharray:5 4" marker-end="url(#arcana-ag)"/>
   <path class="edge" d="M528 300H375V352" style="stroke-dasharray:5 4" marker-end="url(#arcana-ag)"/>
@@ -527,7 +527,7 @@
         <dt>Push origin</dt><dd><a href="https://{{ tailscale_hostname }}:8443">https://{{ tailscale_hostname }}:8443</a> <span class="muted">tailscale serve, trusted cert, for mobile web push (playbooks/tailscale-serve.yml)</span></dd>
         <dt>Clustering</dt><dd>libcluster Epmd over <span class="mono">ARCANA_CLUSTER_HOSTS</span>, shared cookie</dd>
         <dt>Database</dt><dd><span class="mono">arcana_dev</span> on YugabyteDB; only the primary runs migrations</dd>
-        <dt>LLM</dt><dd>Anthropic API (key in a root-only env file) and the local <span class="mono">homelab</span> profile: <span class="mono">sglang-watcher:8080</span> on homelab-net, no auth. The model cold-starts in about 90 s after 5 idle minutes.</dd>
+        <dt>LLM</dt><dd>Anthropic API (key in a root-only env file) and the local <span class="mono">homelab</span> profile: <span class="mono">llm-gateway:8080</span> (alias <span class="mono">sglang-watcher</span>) on homelab-net, no auth. The model cold-starts in about 90 s after 5 idle minutes; if another model is mid-request it answers 503 + Retry-After.</dd>
         <dt>Playbook</dt><dd class="mono">playbooks/arcana2.yml</dd>
       </dl>
     </div>

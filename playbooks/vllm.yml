@@ -1,0 +1,81 @@
+---
+# vLLM container for the DENSE model (Qwen3.6-27B). Created but NOT started: the llm-gateway
+# (playbooks/llm-gateway.yml) starts it on demand and stops whichever other inference container
+# is running, because every inference container claims both 3090s (TP=2).
+#
+# Not published on a host port; the gateway reaches it at http://vllm-dense:8000 over homelab-net.
+#
+# Smoke-test by hand (gateway stopped, GPUs free):
+#   docker start vllm-dense && docker logs -f vllm-dense
+#   curl -s localhost:<ip>:8000/v1/models   (from a container on homelab-net)
+#   docker stop vllm-dense
+#
+# Model options (override with -e):
+#   QuantTrio/Qwen3.6-27B-AWQ              (default; SGLang produced "!" spam with this checkpoint)
+#   QuantTrio/Qwen3.6-27B-AWQ-6Bit         (fallback if 4-bit is degenerate)
+#   cyankiwi/Qwen3.6-27B-AWQ-INT4          (cached locally)
+#   Intel/Qwen3.6-27B-int4-AutoRound       (cached locally)
+
+- name: Deploy vLLM dense-model container
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    docker_network: homelab-net
+
+    vllm_image: "vllm/vllm-openai:v0.29.0"
+    vllm_model_id: "QuantTrio/Qwen3.6-27B-AWQ"
+    vllm_served_model_name: "qwen3.6-27b"
+    vllm_tensor_parallel_size: 2
+    vllm_max_model_len: 131072
+    vllm_gpu_memory_fraction: "0.88"
+    vllm_dtype: "auto"
+    vllm_kv_cache_dtype: "auto"
+    vllm_extra_args: >-
+      --max-num-seqs 4
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+
+  tasks:
+
+    - name: Create vLLM compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/vllm"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [install, vllm]
+
+    - name: Deploy vLLM compose file from template
+      ansible.builtin.template:
+        src: ../templates/vllm-compose.yml.j2
+        dest: "{{ compose_base }}/vllm/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [configure, vllm]
+
+    - name: Pull pinned vLLM image
+      community.docker.docker_image:
+        name: "{{ vllm_image }}"
+        source: pull
+        force_source: no
+      become: yes
+      tags: [docker, vllm]
+
+    - name: Remove vLLM container to apply new config
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/vllm/docker-compose.yml rm -sf vllm-dense
+      become: yes
+      register: vllm_rm
+      changed_when: "'Removed' in vllm_rm.stdout or 'Removed' in vllm_rm.stderr"
+      tags: [docker, vllm]
+
+    - name: Pre-create vLLM container (gateway starts it on demand)
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/vllm/docker-compose.yml create vllm-dense
+      become: yes
+      register: vllm_create
+      changed_when: "'Created' in vllm_create.stdout or 'Created' in vllm_create.stderr"
+      tags: [docker, vllm]

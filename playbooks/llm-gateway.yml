@@ -1,0 +1,107 @@
+---
+# LLM gateway: the single front door for local inference (host 127.0.0.1:8081, net llm-gateway:8080,
+# also reachable as sglang-watcher:8080). Routes by the request's `model` field to one of the
+# inference containers and keeps at most one running, because each claims both 3090s:
+#
+#   sglang      qwen3.6-35b-a3b  MoE    playbooks/sglang.yml
+#   vllm-dense  qwen3.6-27b      dense  playbooks/vllm.yml
+#
+# If the other model is mid-request (or still loading) the gateway answers 503 + Retry-After so the
+# caller can wait and retry; once it is idle the gateway stops it and starts the requested one.
+# Idle backends are stopped after llm_idle_timeout. Source: projects/llm-gateway/proxy.py.
+# Status: curl -s localhost:8081/gateway/status
+#
+# Adding a model = add a container to its runtime playbook and an entry to llm_models here
+# (name must equal that container's --served-model-name).
+
+- name: Deploy LLM gateway
+  hosts: homelab
+  gather_facts: no
+
+  vars:
+    compose_base: /opt/compose
+    docker_network: homelab-net
+    docker_bridge_subnet: 172.18.0.0/16
+    gateway_src: "{{ playbook_dir }}/../projects/llm-gateway"
+
+    llm_gateway_port: 8081
+    llm_default_model: qwen3.6-35b-a3b  # used when a request names no (or an unknown) model
+    llm_models:
+      - { name: qwen3.6-35b-a3b, container: sglang, url: "http://sglang:30000", health: /health }
+      - { name: qwen3.6-27b, container: vllm-dense, url: "http://vllm-dense:8000", health: /health }
+    llm_idle_timeout: 300
+    llm_startup_timeout: 900  # vLLM dense cold start is ~4 min; first run also downloads weights
+    llm_load_wait: 90         # a request blocks this long on a load before getting 503 "loading"
+
+  tasks:
+
+    - name: Remove retired sglang-watcher container (replaced by llm-gateway)
+      community.docker.docker_container:
+        name: sglang-watcher
+        state: absent
+      become: yes
+      tags: [docker, gateway]
+
+    - name: Remove retired sglang-watcher image
+      community.docker.docker_image:
+        name: sglang-watcher:local
+        state: absent
+      become: yes
+      tags: [docker, gateway]
+
+    - name: Create gateway compose directory
+      ansible.builtin.file:
+        path: "{{ compose_base }}/llm-gateway"
+        state: directory
+        mode: '0755'
+      become: yes
+      tags: [install, gateway]
+
+    - name: Deploy gateway compose file from template
+      ansible.builtin.template:
+        src: ../templates/llm-gateway-compose.yml.j2
+        dest: "{{ compose_base }}/llm-gateway/docker-compose.yml"
+        mode: '0644'
+      become: yes
+      tags: [configure, gateway]
+
+    - name: Build llm-gateway image
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_base }}/llm-gateway/docker-compose.yml build
+      become: yes
+      register: gateway_build
+      changed_when: "'writing image' in gateway_build.stdout or 'writing image' in gateway_build.stderr"
+      tags: [docker, gateway]
+
+    - name: Start llm-gateway
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_base }}/llm-gateway"
+        state: present
+      become: yes
+      tags: [docker, gateway]
+
+    - name: Allow gateway port from localhost
+      community.general.ufw:
+        rule: allow
+        port: "{{ llm_gateway_port }}"
+        proto: tcp
+        from_ip: 127.0.0.1
+      become: yes
+      tags: [security, gateway]
+
+    - name: Allow gateway port from Docker bridge subnet
+      community.general.ufw:
+        rule: allow
+        port: "{{ llm_gateway_port }}"
+        proto: tcp
+        from_ip: "{{ docker_bridge_subnet }}"
+      become: yes
+      tags: [security, gateway]
+
+    - name: Deny gateway port from everywhere else
+      community.general.ufw:
+        rule: deny
+        port: "{{ llm_gateway_port }}"
+        proto: tcp
+      become: yes
+      tags: [security, gateway]

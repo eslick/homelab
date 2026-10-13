@@ -8,7 +8,7 @@
 #
 # Convention: a change goes into the subsystem file that owns it (never a new dated playbook).
 # The dated narrative of each change lives in runbooks/. Not imported here:
-#   optional/  alternate/conflicting choices (vllm.yml conflicts with sglang.yml for the GPU)
+#   optional/  alternate/conflicting choices
 #   ops/       actions, not state (system-upgrade.yml reboots the host)
 #   archive/   one-shot retirement/migration playbooks, already applied; kept as history
 
@@ -20,7 +20,9 @@
 - import_playbook: postfix.yml         # Gmail relay
 - import_playbook: docker.yml          # shared network, YugabyteDB, MinIO
 - import_playbook: nginx.yml           # tailnet TLS reverse proxy + index/overview pages
-- import_playbook: sglang.yml          # LLM inference + lifecycle watcher
+- import_playbook: sglang.yml          # MoE inference container (created, started on demand)
+- import_playbook: vllm.yml            # dense inference container (created, started on demand)
+- import_playbook: llm-gateway.yml     # routes by model, one GPU container at a time, 503 when busy
 - import_playbook: browser-service.yml
 - import_playbook: homeassistant.yml
 - import_playbook: syncthing.yml          # Obsidian vault sync (+ retired LiveSync cleanup)
