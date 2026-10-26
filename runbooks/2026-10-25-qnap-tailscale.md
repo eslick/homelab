@@ -27,3 +27,9 @@ Steps taken:
 ## Follow-ups
 - Change the NAS admin password (it was shared in a chat session).
 - Disable key expiry for `qnap-nas` in the Tailscale admin console.
+
+## Addendum: QTS web UI refuses the tailnet IP (port forward workaround)
+- Symptom: iPhone QuMagie said "cannot connect to the network". TCP to `100.100.170.39:8080` (and `:8443`) connected and was then reset. SMB 445, SSH 22 and Plex 32400 worked fine over the tailnet.
+- Findings: the same request works to `127.0.0.1:8080` and `192.168.50.101:8080`, and also fails when the NAS itself connects to its own tailnet IP. So the QTS Apache proxy (backend `127.0.0.1:58080`) resets anything addressed to the tailnet IP. The firewall (`ts-input`) is not the cause. Root cause setting not found.
+- Workaround (on the NAS, persists in tailscaled state): `tailscale serve --bg --tcp 18080 tcp://127.0.0.1:8080`. Use `http://100.100.170.39:18080` (QuMagie app: address `100.100.170.39`, port `18080`, SSL off). `/qumagie/` returns 200.
+- Rollback: `tailscale serve --tcp=18080 off` (or `tailscale serve reset`) on the NAS.
