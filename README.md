@@ -123,6 +123,13 @@ identity lives in `/home/eslick/.local/share/syncthing`, restored with `/home`):
 
 The old CouchDB/LiveSync design is retired (`runbooks/2026-04-04-obsidian-livesync-writeback.md` is history only).
 
+#### QNAP NAS on the tailnet (manual, not in Ansible)
+The NAS is not managed by these playbooks. Tailscale on it is the QNAP `.qpkg`, installed by hand
+(`runbooks/2026-10-25-qnap-tailscale.md`): download the x86_64 package from pkgs.tailscale.com, verify its
+`.sha256`, run it on the NAS, then `tailscale up --accept-dns=false --hostname=qnap-nas` and approve the login URL.
+Disable key expiry for `qnap-nas` in the admin console. SSH from this host uses `~/.ssh/id_ed25519_qnap` (`Host qnap`);
+re-authorize it on the NAS if QTS resets `authorized_keys`.
+
 ### 5. Verify
 - `docker ps` all running/healthy; `systemctl --failed` empty.
 - `sudo -E restic snapshots` shows a new snapshot after the next 03:00 run (or run `sudo /usr/local/bin/homelab-backup.sh`).
