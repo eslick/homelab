@@ -33,3 +33,19 @@ Steps taken:
 - Findings: the same request works to `127.0.0.1:8080` and `192.168.50.101:8080`, and also fails when the NAS itself connects to its own tailnet IP. So the QTS Apache proxy (backend `127.0.0.1:58080`) resets anything addressed to the tailnet IP. The firewall (`ts-input`) is not the cause. Root cause setting not found.
 - Workaround (on the NAS, persists in tailscaled state): `tailscale serve --bg --tcp 18080 tcp://127.0.0.1:8080`. Use `http://100.100.170.39:18080` (QuMagie app: address `100.100.170.39`, port `18080`, SSL off). `/qumagie/` returns 200.
 - Rollback: `tailscale serve --tcp=18080 off` (or `tailscale serve reset`) on the NAS.
+
+## Addendum: switched to the signed App Center build (1.104.2 → 1.40.0)
+- Symptom: Tailscale kept stopping on the NAS every ~20-25 min (log lines 19:10, 19:34, 19:54, 20:05, 20:06). `/var/log` showed
+  `[App Center] Tailscale has an invalid digital signature. The app has stopped and cannot be installed on QTS.` followed by
+  `Stopped Tailscale.`, and `Enable` in `/etc/config/qpkg.conf` flipped to FALSE. The NAS had not rebooted (153 days up).
+- Cause: the pkgs.tailscale.com `.qpkg` is unsigned and QTS 5.2 App Center periodically revalidates and stops it. QNAP docs say App Center
+  rejects invalid/tampered signatures even with "Allow installation without a digital signature" enabled, so that setting is not a reliable fix.
+- Attempts that did not work: re-enabling by hand (stopped again within a minute); a temporary `/tmp` watchdog loop (kept it up, removed afterwards);
+  running the signed `.qpkg` over SSH on top of the existing install (aborted with `Tailscale.sh: no such file` and left the install dir with
+  unrelated Hybrid Backup files; cause not established, either that run or the cancelled GUI install).
+- Fix: backed up `.qpkg/Tailscale/state` (`tar` over SSH), removed the app in App Center, installed Tailscale from the App Center store (signed, **1.40.0-1**, much
+  older than the pkgs.tailscale.com build), then stopped the daemon, restored `state/` from the backup and restarted. Same node identity and IP (`100.100.170.39`), no re-login;
+  the `tailscale serve --tcp 18080` forward came back with the state.
+- Verification: survives a NAS reboot; `tailscale ping qnap-nas` pongs; `http://100.100.170.39:18080/qumagie/` returns 200; no signature errors logged after the install.
+- Notes: the store build lags upstream. The QTS Tailscale app links to the MagicDNS name, which fails on hosts with `accept-dns=false` (this one); use the tailnet IP.
+- Rollback: back up `state/` first, remove the app in App Center, reinstall; restore `state/` and restart `Tailscale.sh`.

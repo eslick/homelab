@@ -124,9 +124,11 @@ identity lives in `/home/eslick/.local/share/syncthing`, restored with `/home`):
 The old CouchDB/LiveSync design is retired (`runbooks/2026-04-04-obsidian-livesync-writeback.md` is history only).
 
 #### QNAP NAS on the tailnet (manual, not in Ansible)
-The NAS is not managed by these playbooks. Tailscale on it is the QNAP `.qpkg`, installed by hand
-(`runbooks/2026-10-25-qnap-tailscale.md`): download the x86_64 package from pkgs.tailscale.com, verify its
-`.sha256`, run it on the NAS, then `tailscale up --accept-dns=false --hostname=qnap-nas` and approve the login URL.
+The NAS is not managed by these playbooks. Tailscale on it is the **signed App Center build** (`runbooks/2026-10-25-qnap-tailscale.md`):
+install Tailscale from App Center → Communications, then `tailscale up --accept-dns=false --hostname=qnap-nas` and approve the login URL.
+Do not use the pkgs.tailscale.com `.qpkg`: it is unsigned and QTS 5.2 stops it every ~20 min. Back up
+`/share/CACHEDEV1_DATA/.qpkg/Tailscale/state` before uninstalling or reinstalling (removal deletes it). QuMagie access needs
+`tailscale serve --bg --tcp 18080 tcp://127.0.0.1:8080` on the NAS (persists in state).
 Disable key expiry for `qnap-nas` in the admin console. SSH from this host uses `~/.ssh/id_ed25519_qnap` (`Host qnap`);
 re-authorize it on the NAS if QTS resets `authorized_keys`.
 
